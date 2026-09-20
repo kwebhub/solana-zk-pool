@@ -1,0 +1,8 @@
+[package]
+name = "hashes"
+type = "bin"
+authors = [""]
+
+[dependencies]
+poseidon = { path = "../poseidon" }
+

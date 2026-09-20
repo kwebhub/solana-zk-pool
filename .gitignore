@@ -56,3 +56,7 @@ grafana-data/
 docs/NOTE.md
 docs/NOTES.md
 docs/*.notes.md
+
+# ============ Noir ============
+Prover.toml
+**/Prover.toml
