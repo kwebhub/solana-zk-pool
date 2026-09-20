@@ -2,7 +2,7 @@
 
 > **Purpose:** this file is the single entry point for an AI assistant (Claude, ChatGPT, etc.) in a new chat. Load it first — the assistant will understand the project without copying code files.
 >
-> **Last updated:** 2026-09-20 (after stage 2)
+> **Last updated:** 2026-09-20 (after stage 3)
 
 ---
 
@@ -20,14 +20,14 @@
 
 **Key improvements over v1:**
 - Clean monorepo structure (`onchain/`, `circuits/`, `services/`, `web/`).
-- Shared `poseidon` library (no duplication of hash_1/hash_2/hash_3).
+- Shared `poseidon` library (no duplication of `hash_1`/`hash_2`/`hash_3`).
 - Pinned versions for all tools in Docker.
 - Removed `network_mode: host`.
 - `pnpm` instead of `yarn`.
 - Cleaner `.gitignore`.
 - `Prover.toml` gitignored.
 
-**Note on front-running:** v1 had a vulnerability where `recipient` was a public input but not used in the circuit. Fix is deferred to stage 4 (design decision: use `hash_3` + separate binding, or another mechanism).
+**Note on front-running:** v1 had a vulnerability where `recipient` was a public input but not used in the circuit. Fix is deferred to stage 4.
 
 ---
 
@@ -55,11 +55,9 @@
 └──────────────┘   └──────────────┘   └──────────────────────┘
                                               ↑
 ┌─────────────────────────────────────────────┴────────────────────┐
-│ SOLANA (Anchor program zk_pool)                                   │
-│ • pool: PDA ["pool3"] — PoolState                                 │
-│ • vault: PDA ["vault3", pool] — SystemAccount                     │
-│ • nullifier_record: PDA ["nullifier_record", pool, nullifier]     │
-│ • verifier: on-chain Groth16 verifier (Sunspot)                   │
+│ SOLANA                                                           │
+│ • Program zk_pool (main): PoolState, Vault, NullifierRecord      │
+│ • Verifier program (Sunspot, Groth16): 35BRi4VE8aXEe2NQvb1FzD... │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,7 +83,7 @@
 | Smart contract | Anchor | 1.1.2 (CLI), anchor-lang 1.1.2 |
 | ZK circuit | Noir / nargo | 1.0.0-rc.2 |
 | ZK backend | Sunspot | 1.0.0 |
-| ZK verification | gnark-solana | — |
+| ZK verification | gnark-solana | v2.0.0 |
 | Backend | Rust | 1.98.1 |
 | Backend framework | axum | 0.7 |
 | Frontend | Vue 3 | 3.5+ |
@@ -131,9 +129,10 @@ solana-zk-pool/
 │   └── target/
 ├── circuits/                ← Noir circuits
 │   ├── poseidon/            ← library: hash_1, hash_2, hash_3
-│   ├── hash2/               ← Poseidon2 for two inputs
+│   ├── hash2/               ← Poseidon2 for JS
 │   ├── hashes/              ← commitment + nullifier_hash
-│   └── withdrawal/          ← main circuit (Merkle proof)
+│   └── withdrawal/          ← main circuit
+│       └── target/          ← ACIR, CCS, PK, VK, SO (NOT committed)
 ├── services/
 │   ├── backend/             ← Rust + axum (stage 5)
 │   ├── merkle/              ← Node.js + noir_js (stage 6)
@@ -174,6 +173,8 @@ Inside: Rust, Solana CLI, Anchor, Noir (nargo), Sunspot, Node.js, pnpm. All vers
 
 **`network_mode: host` is NOT used** — for portability.
 
+**Note:** Sunspot must be cloned (`git clone https://github.com/reilabs/sunspot.git`) for `sunspot deploy` to work. The `.deb` package contains only the CLI binary, not the Rust crate `verifier-bin` needed for compiling the verifier program. Add `git clone` to Dockerfile in stage 12.
+
 ### 5.4. Shared `poseidon` library
 
 All hash primitives (`hash_1`, `hash_2`, `hash_3`) live in `circuits/poseidon/`. Other circuits import them via `[dependencies] poseidon = { path = "../poseidon" }`.
@@ -191,7 +192,7 @@ Poseidon2 in Noir has `t = 4` (state size). Rate = 3, capacity = 1. Using all 4 
 ### ✅ Stage 1. Repository setup (2026-09-20)
 
 - Repository `solana-zk-pool` on GitHub (private).
-- Monorepo structure.
+- Monorepo structure: `onchain/`, `circuits/`, `services/`, `web/`.
 - `.gitignore`, `.editorconfig`, `LICENSE`, `README.md`.
 - `infra/docker/Dockerfile.solana` + `infra/docker-compose.yml`.
 - Docker container `solana` (Ubuntu 24.04, Rust 1.98.1, Solana CLI 3.1.10, Anchor 1.1.2, nargo 1.0.0-rc.2, Node 24.21.0, pnpm 12.5.1, Sunspot 1.0.0).
@@ -210,43 +211,48 @@ Poseidon2 in Noir has `t = 4` (state size). Rate = 3, capacity = 1. Using all 4 
 - All tests passing.
 - Commit: `2fff662`.
 
+### ✅ Stage 3. Sunspot verifier (2026-09-20)
+
+- Cloned Sunspot (`git clone https://github.com/reilabs/sunspot.git`).
+- `sunspot compile target/withdrawal.json` → `withdrawal.ccs`.
+- `sunspot setup target/withdrawal.ccs` → `withdrawal.pk`, `withdrawal.vk`.
+- `sunspot deploy target/withdrawal.vk` → `withdrawal.so`, `withdrawal-keypair.json`.
+- `solana program deploy target/withdrawal.so --url devnet`.
+- **VERIFIER_PROGRAM_ID:** `35BRi4VE8aXEe2NQvb1FzDXJXhh8GzVRSw191bca19Rb`
+- Balance: 0.456 SOL (rent for 89 KB program account).
+- Nothing committed (all in `target/`).
+
 ---
 
 ## 7. What's next
 
-### Stage 3. Sunspot: compile → setup → deploy verifier (next)
-- `sunspot compile` → CCS file from ACIR JSON.
-- `sunspot setup` → proving key (pk) + verifying key (vk).
-- `sunspot deploy` → deploy verifier program on devnet.
-- Obtain verifier program ID.
-- Copy circuit JSONs to merkle and frontend (later).
-
-### Stage 4. Anchor program
+### Stage 4. Anchor program (next)
 - `PoolState`, `NullifierRecord`.
 - Instructions: `pool`, `deposit`, `withdraw`.
-- Verifier CPI.
+- Verifier CPI to `35BRi4VE8aXEe2NQvb1FzDXJXhh8GzVRSw191bca19Rb`.
 - `encode_public_inputs`.
 - **Decide and implement front-running protection.**
+- Tests with `litesvm`.
 
 ### Stages 5–12
-- Backend, Merkle, Prover, Frontend, Infra, Processes, Security, Finalization.
+Backend, Merkle, Prover, Frontend, Infra, Processes, Security, Finalization.
 
 ---
 
 ## 8. Roadmap
 
 - [x] **Stage 1.** Repository setup + Docker + `anchor init`
-- [x] **Stage 2.** ZK circuits in Noir (poseidon library, hash2, hashes, withdrawal)
-- [ ] **Stage 3.** Sunspot: compile → setup → deploy verifier
+- [x] **Stage 2.** ZK circuits in Noir
+- [x] **Stage 3.** Sunspot: compile → setup → deploy verifier
 - [ ] **Stage 4.** Anchor program (PoolState, deposit, withdraw, verifier CPI)
-- [ ] **Stage 5.** Backend (axum + Postgres + Redis + indexer)
-- [ ] **Stage 6.** Merkle service (Node.js + noir_js)
-- [ ] **Stage 7.** Prover (Rust + Sunspot CLI)
-- [ ] **Stage 8.** Frontend (Vue 3 + Codama + witness generation)
-- [ ] **Stage 9.** Infrastructure (Makefile, Prometheus, Grafana)
-- [ ] **Stage 10.** Engineering processes (CI/CD, security, templates)
-- [ ] **Stage 11.** Security (threat model, invariants, tests)
-- [ ] **Stage 12.** Finalization (README EN/RU, CHANGELOG, release)
+- [ ] **Stage 5.** Backend
+- [ ] **Stage 6.** Merkle service
+- [ ] **Stage 7.** Prover
+- [ ] **Stage 8.** Frontend
+- [ ] **Stage 9.** Infrastructure
+- [ ] **Stage 10.** Engineering processes
+- [ ] **Stage 11.** Security
+- [ ] **Stage 12.** Finalization
 
 ---
 
@@ -260,6 +266,7 @@ Poseidon2 in Noir has `t = 4` (state size). Rate = 3, capacity = 1. Using all 4 
 - **TREE_DEPTH hardcoded** in `circuits/withdrawal/src/main.nr` as `global TREE_DEPTH: u32 = 20`. Will be unified in stage 12.
 - **Front-running protection** not yet implemented. Deferred to stage 4.
 - **`recipient` not used** in `withdrawal.nr` (`let _ = recipient`).
+- **Sunspot cloned manually** — add `git clone https://github.com/reilabs/sunspot.git` to `Dockerfile.solana` in stage 12.
 
 ---
 
@@ -295,23 +302,34 @@ cargo test
 ### Noir (inside the container)
 ```bash
 cd /home/ubuntu/circuits/<name>
-nargo test                        # run tests
-nargo execute                     # generate witness (needs Prover.toml)
-nargo test <name> --show-output   # show println output
+nargo test
+nargo execute
+nargo test <name> --show-output
 ```
 
 ### Sunspot (inside the container)
 ```bash
-sunspot compile <acir.json>
-sunspot setup <ccs>
-sunspot deploy <vk>
+# Ensure Sunspot is cloned (once per container):
+git clone https://github.com/reilabs/sunspot.git /home/ubuntu/sunspot
+
+cd /home/ubuntu/circuits/withdrawal
+sunspot compile target/withdrawal.json
+sunspot setup target/withdrawal.ccs
+sunspot deploy target/withdrawal.vk
 sunspot prove <acir> <witness> <ccs> <pk>
+```
+
+### Solana (inside the container)
+```bash
+solana program deploy <path.so> --program-id <keypair.json> --url devnet
+solana program show <PROGRAM_ID> --url devnet
+solana address -k <keypair.json>
 ```
 
 ---
 
 ## 12. Next task for a new assistant
 
-**Stage 3:** Sunspot — compile `withdrawal.json` to CCS, generate proving/verifying keys, deploy verifier program on devnet. Obtain the verifier program ID.
+**Stage 4:** Anchor program in `onchain/programs/zk_pool/src/`. Implement `PoolState`, `NullifierRecord`, instructions (`pool`, `deposit`, `withdraw`), verifier CPI to `35BRi4VE8aXEe2NQvb1FzDXJXhh8GzVRSw191bca19Rb`. Decide and implement front-running protection.
 
 All details — in `docs/NOTE.md` (personal notes, not committed).
