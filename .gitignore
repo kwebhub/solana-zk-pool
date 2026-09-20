@@ -1,0 +1,58 @@
+# ============ Rust ============
+target/
+**/target/
+**/*.rs.bk
+
+# ============ Node.js ============
+node_modules/
+**/node_modules/
+.pnpm-store/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============ Vue / Vite ============
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# ============ Anchor ============
+.anchor/
+test-ledger/
+**/test-ledger/
+
+# ============ Env ============
+.env
+**/.env
+.env.local
+.env.*.local
+
+# ============ Solana keypairs ============
+solana/*.json
+
+# ============ IDE ============
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ============ OS ============
+.DS_Store
+Thumbs.db
+
+# ============ Tests ============
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# ============ Prometheus / Grafana ============
+prometheus-data/
+grafana-data/
+
+# ============ Personal notes ============
+NOTE.md
+NOTES.md
+*.notes.md
