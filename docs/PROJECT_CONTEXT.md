@@ -2,7 +2,7 @@
 
 > **Purpose:** this file is the single entry point for an AI assistant (Claude, ChatGPT, etc.) in a new chat. Load it first — the assistant will understand the project without copying code files.
 >
-> **Last updated:** 2026-09-20
+> **Last updated:** 2026-09-20 (after stage 2)
 
 ---
 
@@ -19,12 +19,15 @@
 **Network:** Solana Devnet
 
 **Key improvements over v1:**
-- **Front-running vulnerability fixed:** `recipient` is now part of the commitment (`hash_4(nullifier, secret, amount, recipient)` instead of `hash_3`).
 - Clean monorepo structure (`onchain/`, `circuits/`, `services/`, `web/`).
+- Shared `poseidon` library (no duplication of hash_1/hash_2/hash_3).
 - Pinned versions for all tools in Docker.
 - Removed `network_mode: host`.
 - `pnpm` instead of `yarn`.
 - Cleaner `.gitignore`.
+- `Prover.toml` gitignored.
+
+**Note on front-running:** v1 had a vulnerability where `recipient` was a public input but not used in the circuit. Fix is deferred to stage 4 (design decision: use `hash_3` + separate binding, or another mechanism).
 
 ---
 
@@ -126,10 +129,11 @@ solana-zk-pool/
 │   │       │   └── instructions.rs
 │   │       └── tests/
 │   └── target/
-├── circuits/                ← Noir circuits (stage 2)
-│   ├── hash2/
-│   ├── hashes/
-│   └── withdrawal/
+├── circuits/                ← Noir circuits
+│   ├── poseidon/            ← library: hash_1, hash_2, hash_3
+│   ├── hash2/               ← Poseidon2 for two inputs
+│   ├── hashes/              ← commitment + nullifier_hash
+│   └── withdrawal/          ← main circuit (Merkle proof)
 ├── services/
 │   ├── backend/             ← Rust + axum (stage 5)
 │   ├── merkle/              ← Node.js + noir_js (stage 6)
@@ -146,29 +150,39 @@ solana-zk-pool/
 
 ## 5. Key decisions
 
-### 5.1. Fixing the front-running vulnerability
+### 5.1. Front-running protection — deferred to stage 4
 
 **Was in v1:** `commitment = hash_3(nullifier, secret, amount)`. Recipient was a public input but **not used in the circuit** (`let _ = recipient`). An attacker could intercept a valid proof and substitute their own recipient.
 
-**Now:** `commitment = hash_4(nullifier, secret, amount, recipient)`. The recipient is part of the commitment, and the commitment is part of the Merkle tree. Recipient substitution is impossible.
+**Planned fix (stage 4):** to be decided. Options:
+- **A.** `commitment = hash_4(nullifier, secret, amount, recipient)` — **rejected**: sponge capacity=0 is insecure.
+- **B.** Sponge with two permutation calls — **expensive**.
+- **C.** `commitment = hash_3(nullifier, hash_2(secret, recipient), amount)` — recipient fixed at deposit time, uses only safe hashes.
+- **D.** Separate binding constraint — doesn't help (attacker knows recipient).
 
-**Trade-off:** the recipient is fixed at deposit time. The user **cannot** withdraw to a different address later.
+**Decision will be made in stage 4.**
 
 ### 5.2. Monorepo structure
 
-**Not `workspace/ptrans/app/...`** but flat folders: `onchain/`, `circuits/`, `services/`, `web/`. Fewer levels, more logical.
+Flat folders: `onchain/`, `circuits/`, `services/`, `web/`. Not `workspace/ptrans/app/...`.
 
 ### 5.3. Docker container `solana` — all-in-one
 
-Inside: Rust, Solana CLI, Anchor, Noir (nargo), Sunspot, Node.js, pnpm. All versions are **pinned**.
+Inside: Rust, Solana CLI, Anchor, Noir (nargo), Sunspot, Node.js, pnpm. All versions **pinned**.
 
 **Volumes:** `onchain/`, `circuits/`, `services/`, `web/`, `solana/` are mounted to `/home/ubuntu/...`.
 
 **`network_mode: host` is NOT used** — for portability.
 
-### 5.4. `recipient` in commitment — to be verified in stage 2/4
+### 5.4. Shared `poseidon` library
 
-**TODO for stage 2:** ensure `withdrawal.nr` uses `hash_4`, not `hash_3`. Update `hashes.nr` and `hashes.json`.
+All hash primitives (`hash_1`, `hash_2`, `hash_3`) live in `circuits/poseidon/`. Other circuits import them via `[dependencies] poseidon = { path = "../poseidon" }`.
+
+**Why:** single source of truth, no duplication.
+
+### 5.5. `hash_4` is NOT used
+
+Poseidon2 in Noir has `t = 4` (state size). Rate = 3, capacity = 1. Using all 4 slots for user data sets capacity=0, **breaking cryptographic security**. So we use only `hash_1`, `hash_2`, `hash_3`.
 
 ---
 
@@ -181,42 +195,48 @@ Inside: Rust, Solana CLI, Anchor, Noir (nargo), Sunspot, Node.js, pnpm. All vers
 - `.gitignore`, `.editorconfig`, `LICENSE`, `README.md`.
 - `infra/docker/Dockerfile.solana` + `infra/docker-compose.yml`.
 - Docker container `solana` (Ubuntu 24.04, Rust 1.98.1, Solana CLI 3.1.10, Anchor 1.1.2, nargo 1.0.0-rc.2, Node 24.21.0, pnpm 12.5.1, Sunspot 1.0.0).
-- Anchor workspace in `onchain/` with an empty program `zk_pool`.
+- Anchor workspace in `onchain/` with empty program `zk_pool`.
 - Program ID: `CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o`.
 - Solana devnet wallet: `HD73coWkoiRgSwtLJiAKUTVxpzNFBo5ZGTa6p1T1ktM` (5 SOL).
-- First commit: `b0ef53b`.
+- Commits: `b0ef53b` (initial), `d43552a` (PROJECT_CONTEXT.md).
+
+### ✅ Stage 2. ZK circuits in Noir (2026-09-20)
+
+- `circuits/poseidon/` — library with `hash_1`, `hash_2`, `hash_3`.
+- `circuits/hash2/` — Poseidon2 for two inputs. 2 tests.
+- `circuits/hashes/` — commitment + nullifier_hash (tuple-return). 4 tests.
+- `circuits/withdrawal/` — main circuit with Merkle proof verification. 2 tests.
+- `merkle_tree.nr` — `compute_merkle_root<let DEPTH: u32>`.
+- All tests passing.
+- Commit: `2fff662`.
 
 ---
 
 ## 7. What's next
 
-### Stage 2. ZK circuit in Noir (next)
-- `hash2` — Poseidon2 for two inputs.
-- `hashes` — commitment + nullifier_hash (with `hash_4`).
-- `withdrawal` — main circuit with recipient in commitment.
-- Tests.
-
-### Stage 3. Sunspot + verifier
-- `sunspot compile` / `setup` / `deploy`.
-- Obtain the verifier program ID.
-- Update `constants.rs`.
+### Stage 3. Sunspot: compile → setup → deploy verifier (next)
+- `sunspot compile` → CCS file from ACIR JSON.
+- `sunspot setup` → proving key (pk) + verifying key (vk).
+- `sunspot deploy` → deploy verifier program on devnet.
+- Obtain verifier program ID.
+- Copy circuit JSONs to merkle and frontend (later).
 
 ### Stage 4. Anchor program
 - `PoolState`, `NullifierRecord`.
 - Instructions: `pool`, `deposit`, `withdraw`.
 - Verifier CPI.
-- `encode_public_inputs` with `hash_4`.
+- `encode_public_inputs`.
+- **Decide and implement front-running protection.**
 
 ### Stages 5–12
 - Backend, Merkle, Prover, Frontend, Infra, Processes, Security, Finalization.
-- See roadmap below.
 
 ---
 
 ## 8. Roadmap
 
 - [x] **Stage 1.** Repository setup + Docker + `anchor init`
-- [ ] **Stage 2.** ZK circuit in Noir (hash2, hashes, withdrawal with hash_4)
+- [x] **Stage 2.** ZK circuits in Noir (poseidon library, hash2, hashes, withdrawal)
 - [ ] **Stage 3.** Sunspot: compile → setup → deploy verifier
 - [ ] **Stage 4.** Anchor program (PoolState, deposit, withdraw, verifier CPI)
 - [ ] **Stage 5.** Backend (axum + Postgres + Redis + indexer)
@@ -230,13 +250,16 @@ Inside: Rust, Solana CLI, Anchor, Noir (nargo), Sunspot, Node.js, pnpm. All vers
 
 ---
 
-## 9. Known limitations (inherited from v1, fixed along the way)
+## 9. Known limitations / TODOs
 
 - **Trusted setup for Groth16** — Sunspot uses a standard setup without a ceremony. Production needs MPC.
 - **Upgrade authority** — single key, no multisig.
 - **Secrets in localStorage** — XSS risk.
 - **Backend sees commitments/nullifiers** — but not the link between them.
 - **MerkleTree depth 20** — max 1M leaves.
+- **TREE_DEPTH hardcoded** in `circuits/withdrawal/src/main.nr` as `global TREE_DEPTH: u32 = 20`. Will be unified in stage 12.
+- **Front-running protection** not yet implemented. Deferred to stage 4.
+- **`recipient` not used** in `withdrawal.nr` (`let _ = recipient`).
 
 ---
 
@@ -246,6 +269,8 @@ Inside: Rust, Solana CLI, Anchor, Noir (nargo), Sunspot, Node.js, pnpm. All vers
 - Branches: `main` (protected), feature branches `feat/...`, `fix/...`.
 - PR: required.
 - CI: in stage 10.
+
+**Rule:** all committed files are in **English**. Russian localization — only in `docs/ru/` (later).
 
 ---
 
@@ -262,16 +287,17 @@ docker compose exec solana bash  # enter container
 ### Anchor (inside the container)
 ```bash
 cd /home/ubuntu/onchain
-anchor build                     # build
-anchor deploy --provider.cluster devnet  # deploy
-cargo test                       # tests
+anchor build
+anchor deploy --provider.cluster devnet
+cargo test
 ```
 
 ### Noir (inside the container)
 ```bash
 cd /home/ubuntu/circuits/<name>
-nargo compile                    # compile
-nargo test                       # tests
+nargo test                        # run tests
+nargo execute                     # generate witness (needs Prover.toml)
+nargo test <name> --show-output   # show println output
 ```
 
 ### Sunspot (inside the container)
@@ -286,6 +312,6 @@ sunspot prove <acir> <witness> <ccs> <pk>
 
 ## 12. Next task for a new assistant
 
-**Stage 2, task 2.1:** `nargo init` for three circuits (`hash2`, `hashes`, `withdrawal`) in `/home/ubuntu/circuits/`.
+**Stage 3:** Sunspot — compile `withdrawal.json` to CCS, generate proving/verifying keys, deploy verifier program on devnet. Obtain the verifier program ID.
 
 All details — in `docs/NOTE.md` (personal notes, not committed).
