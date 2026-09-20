@@ -53,6 +53,6 @@ prometheus-data/
 grafana-data/
 
 # ============ Personal notes ============
-NOTE.md
-NOTES.md
-*.notes.md
+docs/NOTE.md
+docs/NOTES.md
+docs/*.notes.md
