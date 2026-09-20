@@ -53,9 +53,7 @@ prometheus-data/
 grafana-data/
 
 # ============ Personal notes ============
-docs/NOTE.md
-docs/NOTES.md
-docs/*.notes.md
+docs/notes/
 
 # ============ Noir ============
 Prover.toml

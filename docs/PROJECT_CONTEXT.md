@@ -303,8 +303,8 @@ cargo test
 ```bash
 cd /home/ubuntu/circuits/<name>
 nargo test
-nargo execute
-nargo test <name> --show-output
+nargo test test_generate_valid_inputs --show-output   # generate Prover.toml
+nargo execute                                          # solve circuit (needs Prover.toml)
 ```
 
 ### Sunspot (inside the container)
