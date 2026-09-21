@@ -195,8 +195,13 @@ impl Indexer {
 
         let logs = match tx_resp["result"]["meta"]["logMessages"].as_array() {
             Some(l) => l,
-            None => return Ok(()),
+            None => {
+                debug!(signature = %signature, "no logs in transaction");
+                return Ok(());
+            }
         };
+
+        debug!(signature = %signature, logs_count = logs.len(), "processing transaction");
 
         for log in logs {
             let log_str = match log.as_str() {
@@ -208,26 +213,44 @@ impl Indexer {
                 continue;
             }
 
-            let b64 = log_str.replace("Program data: ", "").trim().to_string();
+            debug!(signature = %signature, log = %log_str, "found Program data log");
+
+            let b64: String = log_str
+                .strip_prefix("Program data: ")
+                .unwrap_or("")
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+
+            debug!(signature = %signature, b64_len = b64.len(), "base64 extracted");
+
             let bytes =
                 match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &b64) {
                     Ok(b) => b,
-                    Err(_) => continue,
+                    Err(e) => {
+                        debug!(signature = %signature, error = %e, "base64 decode failed");
+                        continue;
+                    }
                 };
 
+            debug!(signature = %signature, bytes_len = bytes.len(), "base64 decoded");
+
             if bytes.len() < 8 {
+                debug!(signature = %signature, "bytes too short");
                 continue;
             }
 
             let disc: [u8; 8] = bytes[0..8].try_into().unwrap();
+            debug!(signature = %signature, disc = ?disc, "discriminator extracted");
 
             // DepositEvent: 88 bytes
-            // discriminator(8) + commitment(32) + leaf_index(8) + timestamp(8) + new_root(32)
             if disc == DEPOSIT_DISC && bytes.len() == 88 {
                 let commitment = &bytes[8..40];
                 let leaf_index = i64::from_le_bytes(bytes[40..48].try_into().unwrap());
                 let new_root = &bytes[56..88];
                 let commitment_hex = hex::encode(commitment);
+
+                debug!(signature = %signature, leaf_index = leaf_index, "deposit event found");
 
                 if !self.db.commitment_exists(leaf_index).await? {
                     self.db
@@ -266,15 +289,18 @@ impl Indexer {
                     }
 
                     let _ = self.cache.invalidate_pool(&self.config.pool_address).await;
+                } else {
+                    debug!(signature = %signature, leaf_index = leaf_index, "deposit already exists");
                 }
             }
 
             // WithdrawEvent: 88 bytes
-            // discriminator(8) + nullifier_hash(32) + recipient(32) + amount(8) + timestamp(8)
             if disc == WITHDRAW_DISC && bytes.len() == 88 {
                 let nullifier_hash = &bytes[8..40];
                 let recipient = &bytes[40..72];
                 let amount = i64::from_le_bytes(bytes[72..80].try_into().unwrap());
+
+                debug!(signature = %signature, nullifier = %hex::encode(nullifier_hash), "withdraw event found");
 
                 if !self.db.is_nullifier_used(nullifier_hash).await? {
                     self.db
@@ -293,6 +319,8 @@ impl Indexer {
                         "📤 Indexed withdraw"
                     );
                     metrics::record_withdrawal();
+                } else {
+                    debug!(signature = %signature, "withdraw already exists");
                 }
             }
         }

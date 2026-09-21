@@ -1,0 +1,9 @@
+{
+  "idl": "../onchain/target/idl/zk_pool.json",
+  "scripts": {
+    "js": {
+      "from": "@codama/renderers-js",
+      "args": ["."]
+    }
+  }
+}
