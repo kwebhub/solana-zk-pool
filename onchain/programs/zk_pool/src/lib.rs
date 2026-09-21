@@ -1,10 +1,15 @@
 pub mod constants;
 pub mod error;
+pub mod events;
 pub mod instructions;
 pub mod state;
 
 use anchor_lang::prelude::*;
 
+pub use constants::*;
+pub use error::*;
+pub use events::*;
+pub use instructions::*;
 pub use state::*;
 
 declare_id!("CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o");
@@ -12,4 +17,37 @@ declare_id!("CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o");
 #[program]
 pub mod zk_pool {
     use super::*;
+
+    pub fn pool(ctx: Context<InitPool>) -> Result<()> {
+        handler_pool(ctx)
+    }
+
+    pub fn deposit(
+        ctx: Context<InitDeposit>,
+        commitment: [u8; 32],
+        new_root: [u8; 32],
+        amount: u64,
+    ) -> Result<()> {
+        handler_deposit(ctx, commitment, new_root, amount)
+    }
+
+    pub fn withdraw(
+        ctx: Context<InitWithdraw>,
+        proof: Vec<u8>,
+        nullifier_hash: [u8; 32],
+        root: [u8; 32],
+        to: Pubkey,
+        amount: u64,
+        recipient_binding: [u8; 32],
+    ) -> Result<()> {
+        handler_withdraw(
+            ctx,
+            proof,
+            nullifier_hash,
+            root,
+            to,
+            amount,
+            recipient_binding,
+        )
+    }
 }

@@ -187,6 +187,22 @@ Poseidon2 in Noir has `t = 4` (state size). Rate = 3, capacity = 1. Using all 4 
 
 ---
 
+### 5.6. Deposit splitting into unequal parts (planned, stage 12)
+
+**Goal:** allow partial withdrawals, prevent amount-based deanonymization.
+
+**Design:**
+- User chooses k (1..10), default 1.
+- Deposit takes `commitments: Vec<[u8;32]>`, `amounts: Vec<u64>`, `new_root: [u8;32]`.
+- Program verifies `sum(amounts) == transferred SOL`.
+- Amounts are **unequal** — random partition.
+- One deposit → k leaves in Merkle tree.
+- User stores k notes.
+
+**Why unequal:** equal parts create a sum-correlation attack (deposit 10 SOL + 10×1 SOL withdrawals = link).
+
+**MVP in stage 4:** single commitment. Multiple parts deferred to stage 12.
+
 ## 6. What has been done
 
 ### ✅ Stage 1. Repository setup (2026-09-20)
@@ -253,6 +269,8 @@ Backend, Merkle, Prover, Frontend, Infra, Processes, Security, Finalization.
 - [ ] **Stage 10.** Engineering processes
 - [ ] **Stage 11.** Security
 - [ ] **Stage 12.** Finalization
+  - README EN/RU, CHANGELOG, release
+  - **Improve deposit trust model:** verify commitment on-chain, replace weak `new_root != current_root` check - Split deposit into multiple unequal parts (planned improvement)
 
 ---
 
