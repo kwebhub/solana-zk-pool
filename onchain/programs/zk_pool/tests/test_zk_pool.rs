@@ -11,7 +11,7 @@
 use anchor_lang::prelude::Pubkey;
 use std::str::FromStr;
 
-const PROGRAM_ID_STR: &str = "CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o";
+const PROGRAM_ID_STR: &str = "C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q";
 const VERIFIER_PROGRAM_ID_STR: &str = "AukfYGQqhv3ZkdB1G7cKF3djsE9FKMrAfLd34doSWQex";
 const MIN_DEPOSIT_LAMPORTS: u64 = 1_000_000; // 0.001 SOL
 const INITIAL_BALANCE: u64 = 10_000_000_000; // 10 SOL

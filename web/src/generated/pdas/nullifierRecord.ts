@@ -26,7 +26,7 @@ export async function findNullifierRecordPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = 'CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o' as Address<'CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o'>,
+    programAddress = 'C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q' as Address<'C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q'>,
   } = config
   return await getProgramDerivedAddress({
     programAddress,

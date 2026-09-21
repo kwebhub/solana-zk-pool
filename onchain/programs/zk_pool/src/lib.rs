@@ -12,7 +12,7 @@ pub use events::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o");
+declare_id!("C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q");
 
 #[program]
 pub mod zk_pool {

@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-zk_pool = "CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o"
+zk_pool = "C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q"
 
 [provider]
 cluster = "devnet"

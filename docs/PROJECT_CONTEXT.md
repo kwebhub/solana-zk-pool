@@ -67,7 +67,7 @@
 
 ┌──────────────────────────────────────────────────────────────────┐
 │ SOLANA                                                           │
-│ • Program zk_pool: CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o │
+│ • Program zk_pool: C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q │
 │ • Verifier program: AukfYGQqhv3ZkdB1G7cKF3djsE9FKMrAfLd34doSWQex│
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -203,7 +203,7 @@ Commit: `2fff662`.
 Commit: `f461a19`.
 
 ### ✅ Stage 4. Anchor program (2026-09-21)
-**Program ID:** `CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o`.
+**Program ID:** `C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q`.
 
 ### ✅ Stage 5. Backend (2026-09-21)
 Commit: `b5c1ba2`.

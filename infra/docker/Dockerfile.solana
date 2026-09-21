@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 USER root
 
+# System packages + Sunspot (.deb)
 RUN apt-get update && \
   apt-get install -y curl git build-essential pkg-config libssl-dev ca-certificates --no-install-recommends && \
   apt-get clean && rm -rf /var/lib/apt/lists/* && \
@@ -19,10 +20,16 @@ WORKDIR /home/ubuntu
 ENV PATH="/home/ubuntu/.local/share/solana/install/active_release/bin:/home/ubuntu/.cargo/bin:/home/ubuntu/.avm/bin:/home/ubuntu/.noirup/bin:/home/ubuntu/.nargo/bin:/home/ubuntu/.local/share/pnpm:${PATH}"
 ENV NVM_DIR="/home/ubuntu/.nvm"
 
+# Install Rust, Solana CLI, Anchor (via quick install)
+# Install Noir (nargo)
+# Install nvm + Node.js 24
+# Install pnpm
+# Clone Sunspot (needed for `sunspot deploy` — verifier-bin crate)
 RUN echo 'export GNARK_VERIFIER_BIN="$HOME/sunspot/gnark-solana/crates/verifier-bin"' >> /home/ubuntu/.bashrc && \
   curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash && \
   curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash && \
   noirup --version v1.0.0-rc.2 && \
+  git clone --depth 1 https://github.com/reilabs/sunspot.git /home/ubuntu/sunspot && \
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | METHOD=script bash && \
   bash -c "source $NVM_DIR/nvm.sh && nvm install 24 && nvm alias default 24" && \
   curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=12.5.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \

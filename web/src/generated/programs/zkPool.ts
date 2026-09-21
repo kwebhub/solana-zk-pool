@@ -59,7 +59,7 @@ import {
 import { findNullifierRecordPda, findPoolPda, findPoolVaultPda } from '../pdas'
 
 export const ZK_POOL_PROGRAM_ADDRESS =
-  'CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o' as Address<'CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o'>
+  'C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q' as Address<'C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q'>
 
 export enum ZkPoolAccount {
   NullifierRecord,
@@ -182,7 +182,7 @@ export function identifyZkPoolInstruction(
 }
 
 export type ParsedZkPoolInstruction<
-  TProgram extends string = 'CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o',
+  TProgram extends string = 'C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q',
 > =
   | ({ instructionType: ZkPoolInstruction.Deposit } & ParsedDepositInstruction<TProgram>)
   | ({ instructionType: ZkPoolInstruction.Pool } & ParsedPoolInstruction<TProgram>)

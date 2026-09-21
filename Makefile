@@ -19,7 +19,7 @@ YELLOW := \033[0;33m
 BLUE := \033[0;34m
 NC := \033[0m
 
-.PHONY: help start stop status attach logs sync-circuits
+.PHONY: help start stop status attach logs sync-circuits reset
 
 help:
 	@echo "Usage:"
@@ -30,6 +30,7 @@ help:
 	@echo "  make attach <name>      Attach to tmux (backend|prover|merkle|frontend)"
 	@echo "  make logs <name>        Tail service log"
 	@echo "  make sync-circuits      Compile circuits and sync JSON to services"
+	@echo "  make reset              Full cleanup + rebuild from scratch"
 	@echo ""
 	@echo "  Services: backend, merkle, prover, frontend"
 	@echo "  Docker:   postgres, redis, solana, prometheus, grafana"
@@ -42,6 +43,8 @@ _start:
 	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up -d postgres redis solana prometheus grafana
 	@sleep 3
 	@echo -e "$(GREEN)[OK]$(NC) Docker services started"
+	@$(MAKE) --no-print-directory _wait_postgres
+	@$(MAKE) --no-print-directory _apply_migrations
 	@$(MAKE) --no-print-directory _start_merkle
 	@$(MAKE) --no-print-directory _start_prover
 	@$(MAKE) --no-print-directory _start_backend
@@ -54,6 +57,21 @@ _start:
 	@echo "  Show status:        make status"
 	@echo "  Stop all:           make stop"
 	@echo ""
+
+_wait_postgres:
+	@echo -e "$(BLUE)[INFO]$(NC) Waiting for Postgres..."
+	@for i in $$(seq 1 30); do \
+		if docker exec zkpool-postgres pg_isready -U zkpool -d zkpool >/dev/null 2>&1; then \
+			echo -e "$(GREEN)[OK]$(NC) Postgres is ready"; \
+			break; \
+		fi; \
+		sleep 1; \
+	done
+
+_apply_migrations:
+	@echo -e "$(BLUE)[INFO]$(NC) Applying migrations..."
+	@docker exec -i zkpool-postgres psql -U zkpool -d zkpool < $(shell pwd)/services/backend/migrations/001_init.sql >/dev/null 2>&1 || true
+	@echo -e "$(GREEN)[OK]$(NC) Migrations applied"
 
 _start_merkle:
 	@if tmux has-session -t $(SESSION_PREFIX)-merkle 2>/dev/null; then \
@@ -192,6 +210,64 @@ sync-circuits:
 	@echo -e "$(BLUE)[INFO]$(NC) Syncing circuits..."
 	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec solana bash -ic 'cd /home/ubuntu && cargo run --manifest-path scripts/sync-circuits/Cargo.toml'
 	@echo -e "$(GREEN)[OK]$(NC) Circuits synced"
+
+reset:
+	@echo -e "$(YELLOW)[WARN]$(NC) Full cleanup: containers, images, volumes, networks, caches"
+	@echo -e "$(BLUE)[INFO]$(NC) Stopping tmux sessions..."
+	@for name in prover backend merkle frontend; do \
+		session="$(SESSION_PREFIX)-$$name"; \
+		if tmux has-session -t "$$session" 2>/dev/null; then \
+			tmux kill-session -t "$$session"; \
+			echo -e "$(GREEN)[OK]$(NC) Stopped session $$session"; \
+		fi; \
+	done
+	@echo -e "$(BLUE)[INFO]$(NC) Killing zombie processes..."
+	@-sudo pkill -f zkpool_prover 2>/dev/null || true
+	@-sudo pkill -f zkpool-backend 2>/dev/null || true
+	@-sudo pkill -f "node src/server.js" 2>/dev/null || true
+	@-sudo pkill -f vite 2>/dev/null || true
+	@echo -e "$(BLUE)[INFO]$(NC) Stopping and removing Docker containers + volumes + orphans..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) down -v --remove-orphans
+	@echo -e "$(BLUE)[INFO]$(NC) Pruning Docker: containers, images, networks, build cache, dangling volumes..."
+	@docker system prune -af --volumes
+	@echo -e "$(BLUE)[INFO]$(NC) Removing local Rust target directories..."
+	@rm -rf onchain/target services/backend/target services/prover/target scripts/sync-circuits/target
+	@echo -e "$(BLUE)[INFO]$(NC) Removing Node.js artifacts (node_modules, dist, generated)..."
+	@rm -rf web/node_modules web/dist web/playwright-report web/test-results
+	@rm -rf services/merkle/node_modules
+	@rm -rf web/src/generated
+	@echo -e "$(BLUE)[INFO]$(NC) Removing circuits artifacts..."
+	@rm -rf circuits/*/target
+	@echo -e "$(BLUE)[INFO]$(NC) Removing temp logs..."
+	@rm -f /tmp/zkpool-*.log
+	@echo -e "$(GREEN)[OK]$(NC) Cleanup complete"
+	@echo ""
+	@echo -e "$(BLUE)[INFO]$(NC) Rebuilding from scratch..."
+	@$(MAKE) --no-print-directory _reset_rebuild
+	@echo -e "$(GREEN)[OK]$(NC) Reset complete. All services running."
+
+_reset_rebuild:
+	@echo -e "$(BLUE)[INFO]$(NC) Building Docker images..."
+	@cd infra && $(DOCKER_COMPOSE) build solana
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Docker services..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up -d postgres redis solana prometheus grafana
+	@sleep 3
+	@$(MAKE) --no-print-directory _wait_postgres
+	@$(MAKE) --no-print-directory _apply_migrations
+	@echo -e "$(BLUE)[INFO]$(NC) Installing merkle dependencies..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec solana bash -ic 'cd $(MERKLE_DIR) && pnpm install --frozen-lockfile' >/dev/null 2>&1
+	@echo -e "$(BLUE)[INFO]$(NC) Syncing circuits..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec solana bash -ic 'cd /home/ubuntu && cargo run --manifest-path scripts/sync-circuits/Cargo.toml' >/dev/null 2>&1
+	@echo -e "$(BLUE)[INFO]$(NC) Installing frontend dependencies..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec solana bash -ic 'cd $(FRONTEND_DIR) && pnpm install --frozen-lockfile' >/dev/null 2>&1
+	@echo -e "$(BLUE)[INFO]$(NC) Generating Codama clients..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec solana bash -ic 'cd $(FRONTEND_DIR) && pnpm codama' >/dev/null 2>&1
+	@echo -e "$(BLUE)[INFO]$(NC) Starting application services..."
+	@$(MAKE) --no-print-directory _start_merkle
+	@$(MAKE) --no-print-directory _start_prover
+	@$(MAKE) --no-print-directory _start_backend
+	@$(MAKE) --no-print-directory _start_frontend
+	@$(MAKE) --no-print-directory _wait_services
 
 %:
 	@:

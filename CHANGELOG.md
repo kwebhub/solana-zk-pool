@@ -58,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release.
 - Full ZK protocol stack: Noir circuits, Sunspot verifier, Anchor program, backend, merkle, prover, frontend.
-- Program ID: `CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o`.
+- Program ID: `C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q`.
 - Verifier Program ID: `AukfYGQqhv3ZkdB1G7cKF3djsE9FKMrAfLd34doSWQex`.
 
 [Unreleased]: https://github.com/kwebhub/solana-zk-pool/compare/v0.1.0...HEAD
