@@ -2,7 +2,7 @@
 
 > **Purpose:** this file is the single entry point for an AI assistant (Claude, ChatGPT, etc.) in a new chat. Load it first — the assistant will understand the project without copying code files.
 >
-> **Last updated:** 2026-09-21 (after stage 10)
+> **Last updated:** 2026-09-21 (after stage 11)
 
 ---
 
@@ -12,14 +12,14 @@
 
 **Origin:** [Solana Foundation Bootcamp 2026 — "05-private-transfers"](https://github.com/solana-foundation/solana-bootcamp-2026/tree/main/05-private-transfers).
 
-**Previous version:** [kwebhub/private-transfer](https://github.com/kwebhub/private-transfer) — v1, written with an AI assistant. **solana-zk-pool** is v2, rewritten from scratch with improvements.
+**Previous version:** [kwebhub/private-transfer](https://github.com/kwebhub/private-transfer) — v1.
 
 **Repository:** https://github.com/kwebhub/solana-zk-pool (private)
 **License:** MIT
 **Network:** Solana Devnet
 
 **Key improvements over v1:**
-- Clean monorepo structure (`onchain/`, `circuits/`, `services/`, `web/`, `scripts/`).
+- Clean monorepo structure.
 - Shared `poseidon` library.
 - Pinned versions for all tools.
 - `pnpm` instead of `yarn`.
@@ -27,14 +27,16 @@
 - `Prover.toml` gitignored.
 - **Front-running protection** via `recipient_binding`.
 - **`amount` in `WithdrawEvent`**.
-- **`@noir-lang/noir_js` synced with `nargo`** (1.0.0-rc.2).
+- **`@noir-lang/noir_js` synced with `nargo`**.
 - **Health endpoints** in all services.
 - **`note_secret`** in deposit note.
-- **`VITE_MIN_DEPOSIT` synced with on-chain `MIN_DEPOSIT_AMOUNT`** (0.001).
-- **Makefile** for full service orchestration.
+- **`VITE_MIN_DEPOSIT` synced with on-chain `MIN_DEPOSIT_AMOUNT`**.
+- **Makefile** for full orchestration.
 - **Prometheus + Grafana** provisioning.
 - **Rust CLI** for circuits sync.
-- **CI/CD**: 4 GitHub Actions workflows, Dependabot, templates.
+- **CI/CD**: 4 GitHub Actions workflows.
+- **Threat model** with 7 invariants and 12 attack scenarios.
+- **18 integration tests** for the program.
 
 ---
 
@@ -47,7 +49,6 @@
               ↓ HTTP                    ↑ HTTP
 ┌──────────────────────────────────────────────────────────────────┐
 │ BACKEND (Rust + axum) — port 4001                                │
-│ • /api/commitments  • /api/root  • /api/proof  • /api/withdraw   │
 └──────────────────────────────────────────────────────────────────┘
        ↓                    ↓                    ↓
 ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐
@@ -73,16 +74,16 @@
 
 ### Services and ports
 
-| Service | Port | Where | Purpose |
-|---------|------|-------|---------|
-| frontend | 5173 | host | Vue 3 + Vite |
-| backend | 4001 | `solana` container | Rust + axum |
-| prover | 4002 | `solana` container | Sunspot CLI wrapper |
-| merkle | 4003 | `solana` container | Node.js + noir_js |
-| postgres | 5432 | Docker | DB |
-| redis | 6379 | Docker | cache |
-| prometheus | 9090 | Docker | metrics |
-| grafana | 3000 | Docker | visualization |
+| Service | Port | Where |
+|---------|------|-------|
+| frontend | 5173 | host |
+| backend | 4001 | `solana` container |
+| prover | 4002 | `solana` container |
+| merkle | 4003 | `solana` container |
+| postgres | 5432 | Docker |
+| redis | 6379 | Docker |
+| prometheus | 9090 | Docker |
+| grafana | 3000 | Docker |
 
 ---
 
@@ -108,7 +109,6 @@
 | Node.js | Node.js | 24.21.0 |
 | pnpm | pnpm | 12.5.1 |
 | CI/CD | GitHub Actions | 4 workflows |
-| Deps | Dependabot | 8 configs |
 
 ---
 
@@ -117,18 +117,11 @@
 ```
 solana-zk-pool/
 ├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml
-│   │   ├── docker.yml
-│   │   ├── release.yml
-│   │   └── security.yml
+│   ├── workflows/{ci,docker,release,security}.yml
 │   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.md
-│   │   ├── config.yml
-│   │   └── feature_request.md
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── dependabot.yml
-├── Makefile                 ← service management
+├── Makefile
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -136,19 +129,17 @@ solana-zk-pool/
 ├── docs/
 │   ├── notes/               ← personal notes (NOT committed)
 │   ├── PROJECT_CONTEXT.md   ← this file
+│   ├── threat-model.md
 │   └── ru/                  ← Russian localization (later)
 ├── infra/
 │   ├── docker-compose.yml
 │   ├── prometheus.yml
 │   ├── grafana/provisioning/
-│   └── docker/
-├── scripts/sync-circuits/   ← Rust CLI
-├── onchain/
-├── circuits/
-├── services/
-│   ├── backend/
-│   ├── merkle/
-│   └── prover/
+│   └── docker/Dockerfile.solana
+├── scripts/sync-circuits/
+├── onchain/programs/zk_pool/
+├── circuits/{poseidon,hash2,hashes,withdrawal}/
+├── services/{backend,merkle,prover}/
 ├── web/
 ├── solana/
 ├── .editorconfig
@@ -162,19 +153,15 @@ solana-zk-pool/
 ## 5. Key decisions
 
 ### 5.1. Front-running protection — implemented
-Note bearer-style. Recipient bound via `recipient_binding = hash_2(note_secret, recipient)`.
-
-**5 public inputs:** root, nullifier_hash, recipient, recipient_binding, amount.
+`recipient_binding = hash_2(note_secret, recipient)`. 5 public inputs.
 
 ### 5.2. Monorepo structure
-Flat: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`.
 
-### 5.3. Docker container `solana` — all-in-one
-`network_mode: host`. Volumes: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`, `solana/`.
+### 5.3. Docker container `solana` — all-in-one, `network_mode: host`
 
 ### 5.4. Shared `poseidon` library
 
-### 5.5. `hash_4` is NOT used (sponge capacity = 0)
+### 5.5. `hash_4` is NOT used
 
 ### 5.6. Deposit splitting into unequal parts (planned, stage 12)
 
@@ -182,7 +169,7 @@ Flat: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`.
 
 ### 5.8. Circuits sync — Rust CLI
 
-### 5.9. Prover bottleneck — Redis Streams (planned, stage 12)
+### 5.9. Prover bottleneck (planned, stage 12)
 
 ### 5.10. DB queries don't filter by `pool_address` (planned, stage 12)
 
@@ -191,12 +178,13 @@ Flat: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`.
 ### 5.12. Makefile — single entry point
 
 ### 5.13. CI/CD
-- `ci.yml` — 6 jobs + aggregator.
-- `docker.yml` — GHCR + semver.
-- `release.yml` — auto-changelog.
-- `security.yml` — cargo-deny (blocking), cargo-audit, pnpm audit, trivy, gitleaks.
 
-### 5.14. Dependabot — 8 configs, groups for minor+patch
+### 5.14. Dependabot
+
+### 5.15. Threat model documented
+- 7 invariants (I1-I7).
+- 12 attack scenarios (A1-A12).
+- 18 integration tests.
 
 ---
 
@@ -209,7 +197,6 @@ Commits: `b0ef53b`, `d43552a`.
 Commit: `2fff662`.
 
 ### ✅ Stage 3. Sunspot verifier (2026-09-20)
-Nothing committed.
 
 ### ✅ Stage 4.1a. Front-running protection (2026-09-20)
 **VERIFIER_PROGRAM_ID:** `AukfYGQqhv3ZkdB1G7cKF3djsE9FKMrAfLd34doSWQex`.
@@ -234,59 +221,51 @@ Commit: `3f3ae8d`.
 Commits: `7c2b469`, `18f794d`, `4d5c258`.
 
 ### ✅ Stage 10. Engineering processes (2026-09-21)
-- 4 GitHub Actions workflows.
-- Dependabot (8 configs).
-- Issue/PR templates.
-- `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `deny.toml`.
-- Commit: `aa92b60`.
+Commit: `aa92b60`.
+
+### ✅ Stage 11. Security (2026-09-21)
+- `docs/threat-model.md` — 7 invariants, 12 attack scenarios.
+- 18 integration tests.
+- Commit: `4d341e9`.
 
 ---
 
 ## 7. What's next
 
-### Stage 11. Security (next)
-- Threat model (docs/threat-model.md).
-- Invariants (I1-I7).
-- Attack scenarios (A1-A11).
-- Integration tests (litesvm).
-
-### Stage 12. Finalization
+### Stage 12. Finalization (next)
 - README EN/RU.
-- Split deposit into unequal parts.
+- Split deposit into multiple unequal parts.
 - On-chain commitment verification.
-- Sunspot git clone in Dockerfile.
+- Sunspot `git clone` in Dockerfile.
 - Redis Streams queue for prover.
+- Timeout for `sunspot prove`.
+- Per-request temp dirs in prover.
+- **`commitment_exists` / `is_nullifier_used` filter by `pool_address`.**
+- CHANGELOG release.
+- Final documentation.
 
 ---
 
 ## 8. Roadmap
 
-- [x] **Stage 1.** Repository setup
-- [x] **Stage 2.** ZK circuits in Noir
-- [x] **Stage 3.** Sunspot verifier
-- [x] **Stage 4.** Anchor program
-- [x] **Stage 5.** Backend
-- [x] **Stage 6.** Merkle service
-- [x] **Stage 7.** Prover
-- [x] **Stage 8.** Frontend
-- [x] **Stage 9.** Infrastructure
-- [x] **Stage 10.** Engineering processes
-- [ ] **Stage 11.** Security (threat model, invariants, tests)
-- [ ] **Stage 12.** Finalization
-  - README EN/RU, CHANGELOG, release
-  - Split deposit into multiple unequal parts
-  - **Improve deposit trust model:** verify commitment on-chain
-  - Add Sunspot `git clone` to Dockerfile
-  - Redis Streams queue for prover
-  - Timeout for `sunspot prove`
-  - Per-request temp dirs in prover
-  - **`commitment_exists` / `is_nullifier_used` filter by `pool_address`**
+- [x] Stage 1. Repository setup
+- [x] Stage 2. ZK circuits
+- [x] Stage 3. Sunspot verifier
+- [x] Stage 4. Anchor program
+- [x] Stage 5. Backend
+- [x] Stage 6. Merkle service
+- [x] Stage 7. Prover
+- [x] Stage 8. Frontend
+- [x] Stage 9. Infrastructure
+- [x] Stage 10. Engineering processes
+- [x] Stage 11. Security
+- [ ] Stage 12. Finalization
 
 ---
 
 ## 9. Known limitations / TODOs
 
-- **Trusted setup** — no MPC.
+- **Trusted setup for Groth16** — no MPC.
 - **Upgrade authority** — single key.
 - **Secrets in localStorage** — XSS risk.
 - **Backend sees commitments/nullifiers.**
@@ -294,10 +273,10 @@ Commits: `7c2b469`, `18f794d`, `4d5c258`.
 - **TREE_DEPTH hardcoded.**
 - **Deposit trust model** — not verified on-chain.
 - **Sunspot cloned manually.**
-- **Prover:** single-threaded, no timeout, race condition on files.
+- **Prover:** single-threaded, no timeout, race condition.
 - **DB queries** don't filter by `pool_address`.
 - **Indexer debug logs** — verbose.
-- **Docker workflows** — only backend/merkle/prover, not solana.
+- **Docker workflows** — only backend/merkle/prover.
 
 ---
 
@@ -310,36 +289,49 @@ Commits: `7c2b469`, `18f794d`, `4d5c258`.
 
 ## 11. Commands
 
-### Makefile (from project root)
+### Makefile
 ```bash
-make start
-make stop
-make status
-make attach <backend|prover|merkle|frontend>
-make logs <backend|prover|merkle|frontend>
-make sync-circuits
+make start / stop / status / attach <name> / logs <name> / sync-circuits
 ```
 
 ### Docker
 ```bash
-cd infra
-docker compose up -d
+cd infra && docker compose up -d
 docker compose exec solana bash
 ```
 
-### Frontend
+### Tests
 ```bash
-cd /home/ubuntu/web
-pnpm install && pnpm approve-builds && pnpm install
-rm -rf src/generated && pnpm codama
-pnpm dev
-pnpm test:e2e --project=chromium
+# Anchor
+docker compose -f infra/docker-compose.yml exec solana bash -ic \
+  "cd /home/ubuntu/onchain && cargo test"
+
+# Noir
+docker compose -f infra/docker-compose.yml exec solana bash -ic \
+  "cd /home/ubuntu/circuits/withdrawal && nargo test"
+
+# Merkle
+docker compose -f infra/docker-compose.yml exec solana bash -ic \
+  "cd /home/ubuntu/services/merkle && pnpm test"
+
+# Frontend
+docker compose -f infra/docker-compose.yml exec solana bash -ic \
+  "cd /home/ubuntu/web && pnpm test:e2e --project=chromium"
 ```
 
 ---
 
 ## 12. Next task for a new assistant
 
-**Stage 11:** Security. Create `docs/threat-model.md` with assets, actors, invariants (I1-I7), attack scenarios (A1-A11), mitigations. Write integration tests (litesvm) for `withdraw` invariants: double-spend, invalid proof, invalid root, recipient mismatch.
+**Stage 12:** Finalization. Multiple improvements:
+1. README EN/RU.
+2. Split deposit into unequal parts (program + frontend + note).
+3. On-chain commitment verification.
+4. Sunspot `git clone` in Dockerfile.
+5. Redis Streams for prover.
+6. Timeout and per-request dirs in prover.
+7. DB queries filter by `pool_address`.
+8. CHANGELOG release.
+9. Final documentation.
 
 All details — in `docs/notes/` (personal notes, not committed).
