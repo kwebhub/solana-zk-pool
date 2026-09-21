@@ -16,4 +16,32 @@ services:
       - ../solana:/home/ubuntu/.config/solana
     environment:
       - CARGO_TERM_COLOR=always
+    network_mode: host
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: zkpool-postgres
+    environment:
+      POSTGRES_USER: zkpool
+      POSTGRES_PASSWORD: zkpool_dev_password
+      POSTGRES_DB: zkpool
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: zkpool-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  postgres_data:
+  redis_data:
