@@ -19,7 +19,7 @@ YELLOW := \033[0;33m
 BLUE := \033[0;34m
 NC := \033[0m
 
-.PHONY: help start stop status attach logs
+.PHONY: help start stop status attach logs sync-circuits
 
 help:
 	@echo "Usage:"
@@ -29,6 +29,7 @@ help:
 	@echo "  make status             Show status"
 	@echo "  make attach <name>      Attach to tmux (backend|prover|merkle|frontend)"
 	@echo "  make logs <name>        Tail service log"
+	@echo "  make sync-circuits      Compile circuits and sync JSON to services"
 	@echo ""
 	@echo "  Services: backend, merkle, prover, frontend"
 	@echo "  Docker:   postgres, redis, solana, prometheus, grafana"
@@ -186,6 +187,11 @@ logs:
 		exit 1; \
 	fi; \
 	tail -f "$$logfile"
+
+sync-circuits:
+	@echo -e "$(BLUE)[INFO]$(NC) Syncing circuits..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec solana bash -ic 'cd /home/ubuntu && cargo run --manifest-path scripts/sync-circuits/Cargo.toml'
+	@echo -e "$(GREEN)[OK]$(NC) Circuits synced"
 
 %:
 	@:

@@ -1,0 +1,11 @@
+[package]
+name = "sync-circuits"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89.0"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+
+[workspace]
