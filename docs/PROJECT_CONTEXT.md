@@ -2,7 +2,7 @@
 
 > **Purpose:** this file is the single entry point for an AI assistant (Claude, ChatGPT, etc.) in a new chat. Load it first — the assistant will understand the project without copying code files.
 >
-> **Last updated:** 2026-09-21 (after stage 8)
+> **Last updated:** 2026-09-21 (after stage 9)
 
 ---
 
@@ -31,6 +31,9 @@
 - **Health endpoints** in all services.
 - **`note_secret`** in deposit note.
 - **`VITE_MIN_DEPOSIT` synced with on-chain `MIN_DEPOSIT_AMOUNT`** (0.001).
+- **Makefile** for full service orchestration.
+- **Prometheus + Grafana** provisioning.
+- **Rust CLI** for circuits sync.
 
 ---
 
@@ -39,14 +42,11 @@
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ FRONTEND (Vue 3 + Vite + Pinia) — port 5173                      │
-│ • Deposit: commitment + tx                                       │
-│ • Withdraw: witness + proof request + tx                         │
 └──────────────────────────────────────────────────────────────────┘
               ↓ HTTP                    ↑ HTTP
 ┌──────────────────────────────────────────────────────────────────┐
 │ BACKEND (Rust + axum) — port 4001                                │
 │ • /api/commitments  • /api/root  • /api/proof  • /api/withdraw   │
-│ • Indexer: events → Postgres → Merkle tree in Redis              │
 └──────────────────────────────────────────────────────────────────┘
        ↓                    ↓                    ↓
 ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐
@@ -56,7 +56,11 @@
 
 ┌──────────────────────────────────────────────────────────────────┐
 │ PROVER (Rust + axum) — port 4002                                 │
-│ • /prove — wraps sunspot CLI                                     │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ MONITORING                                                       │
+│ • Prometheus :9090  • Grafana :3000                              │
 └──────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────┐
@@ -96,10 +100,10 @@
 | Frontend | Vue 3 + Vite + Pinia | 3.5+ / 8.x / 4.x |
 | Codama | @codama/* | 1.6.2 / 1.5.5 / 2.4.0 |
 | Solana SDK | @solana/kit / @solana/web3.js | 6.10.0 / 1.99.0 |
-| Contracts client | @solana/program-client-core | 6.10.0 |
 | DB | PostgreSQL | 16 |
 | Cache | Redis | 7 |
 | Monitoring | Prometheus + Grafana | latest |
+| Container | Docker | latest |
 | Node.js | Node.js | 24.21.0 |
 | pnpm | pnpm | 12.5.1 |
 
@@ -109,40 +113,36 @@
 
 ```
 solana-zk-pool/
+├── Makefile                 ← service management
 ├── docs/
 │   ├── notes/               ← personal notes (NOT committed)
 │   ├── PROJECT_CONTEXT.md   ← this file
 │   └── ru/                  ← Russian localization (later)
 ├── infra/
 │   ├── docker-compose.yml
+│   ├── prometheus.yml
+│   ├── grafana/provisioning/
+│   │   ├── dashboards/
+│   │   │   ├── dashboards.yml
+│   │   │   └── zkpool.json
+│   │   └── datasources/
+│   │       └── prometheus.yml
 │   └── docker/
 │       ├── Dockerfile.solana
 │       └── .dockerignore
+├── scripts/
+│   └── sync-circuits/       ← Rust CLI for circuits sync
 ├── onchain/                 ← Anchor workspace
-│   ├── Anchor.toml
-│   ├── Cargo.toml
-│   ├── rust-toolchain.toml
-│   ├── programs/zk_pool/
-│   └── target/
 ├── circuits/
-│   ├── poseidon/            ← library: hash_1, hash_2, hash_3
+│   ├── poseidon/
 │   ├── hash2/
 │   ├── hashes/
 │   └── withdrawal/
 ├── services/
-│   ├── backend/             ← Rust + axum ✅
-│   ├── merkle/              ← Node.js + noir_js ✅
-│   └── prover/              ← Rust + Sunspot ✅
-├── web/                     ← Vue 3 ✅
-│   ├── public/circuits/
-│   ├── src/
-│   │   ├── generated/       ← Codama
-│   │   ├── services/
-│   │   ├── stores/
-│   │   ├── composables/
-│   │   ├── views/
-│   │   └── components/
-│   └── e2e/
+│   ├── backend/
+│   ├── merkle/
+│   └── prover/
+├── web/
 ├── solana/
 ├── .editorconfig
 ├── .gitignore
@@ -155,43 +155,43 @@ solana-zk-pool/
 ## 5. Key decisions
 
 ### 5.1. Front-running protection — implemented
-
-Note is bearer-style. Recipient bound via `recipient_binding = hash_2(note_secret, recipient)`.
+Note bearer-style. Recipient bound via `recipient_binding = hash_2(note_secret, recipient)`.
 
 **5 public inputs:** root, nullifier_hash, recipient, recipient_binding, amount.
-**Private inputs:** nullifier, secret, note_secret, merkle_proof, is_even.
 
 ### 5.2. Monorepo structure
-Flat: `onchain/`, `circuits/`, `services/`, `web/`.
+Flat: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`.
 
 ### 5.3. Docker container `solana` — all-in-one
 Rust, Solana CLI, Anchor, Noir, Sunspot, Node.js, pnpm. `network_mode: host`.
-
-Sunspot must be cloned for `sunspot deploy`. Add to Dockerfile in stage 12.
+Volumes: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`, `solana/`.
 
 ### 5.4. Shared `poseidon` library
 All hashes in `circuits/poseidon/`.
 
 ### 5.5. `hash_4` is NOT used
-Poseidon2: `t = 4`, rate = 3. Only `hash_1`, `hash_2`, `hash_3`.
+Poseidon2: `t = 4`, rate = 3.
 
 ### 5.6. Deposit splitting into unequal parts (planned, stage 12)
-k (1..10), `amounts: Vec<u64>`, unequal.
+k (1..10), unequal amounts.
 
 ### 5.7. Deposit trust model — deferred to stage 12
 Program does NOT verify `commitment` on-chain.
 
-### 5.8. Circuits sync — automatic Rust script (planned, stage 9 or 12)
-Currently copied manually.
+### 5.8. Circuits sync — Rust CLI
+`scripts/sync-circuits/` compiles + copies JSON to `services/merkle/circuits/` and `web/public/circuits/`.
 
 ### 5.9. Prover bottleneck (planned, stage 12)
-`sunspot prove` single-threaded. Redis Streams queue planned.
+Redis Streams queue planned.
 
-### 5.10. `commitment_exists` / `is_nullifier_used` do not filter by `pool_address` (planned, stage 12)
-If DB has `leaf_index=0` from another pool, new pool is skipped. Add `pool_address` to condition.
+### 5.10. DB queries don't filter by `pool_address` (planned, stage 12)
 
-### 5.11. Frontend: pnpm + `@solana/kit`/`@codama/*` pinned to exact versions
-Otherwise Codama generates code for newer types that don't exist in pinned `@solana/program-client-core@6.10.0`.
+### 5.11. Frontend: `@solana/kit`/`@codama/*` pinned to exact versions
+
+### 5.12. Makefile — single entry point
+- `make start` — всё одной командой.
+- `make status` — tmux + HTTP + Docker.
+- `bash -ic` для сервисов внутри `solana`.
 
 ---
 
@@ -200,7 +200,7 @@ Otherwise Codama generates code for newer types that don't exist in pinned `@sol
 ### ✅ Stage 1. Repository setup (2026-09-20)
 Commits: `b0ef53b`, `d43552a`.
 
-### ✅ Stage 2. ZK circuits in Noir (2026-09-20)
+### ✅ Stage 2. ZK circuits (2026-09-20)
 Commit: `2fff662`.
 
 ### ✅ Stage 3. Sunspot verifier (2026-09-20)
@@ -224,25 +224,28 @@ Commit: `ed3b912`.
 Commit: `bcdec13`.
 
 ### ✅ Stage 8. Frontend (2026-09-21)
-- Vue 3 + Vite + Pinia + TS + Pug + SCSS.
-- Codama-generated clients.
-- Services, stores, composables, views, components.
-- E2E (Playwright): 6 tests.
-- Copied circuits to `public/circuits/`.
-- Deposit + withdraw flow **end-to-end**.
-- Commit: `3f3ae8d`.
+Commit: `3f3ae8d`.
+
+### ✅ Stage 9. Infrastructure (2026-09-21)
+- Makefile (`start`, `stop`, `status`, `attach`, `logs`, `sync-circuits`).
+- Prometheus (scrape backend).
+- Grafana (datasources + 9-panel dashboard).
+- Rust CLI `sync-circuits`.
+- Docker Compose: `prometheus`, `grafana`, `scripts` volume.
+- Commits: `7c2b469`, `18f794d`, `4d5c258`.
 
 ---
 
 ## 7. What's next
 
-### Stage 9. Infrastructure (next)
-- Makefile (start/stop/status/attach/logs).
-- Prometheus + Grafana (dashboards, provisioning).
-- Rust CLI utility for circuits sync (compile + copy JSON to merkle/web).
+### Stage 10. Engineering processes (next)
+- GitHub Actions: `ci.yml`, `docker.yml`, `release.yml`, `security.yml`.
+- Issue/PR templates.
+- `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`.
+- `dependabot.yml`.
 
-### Stages 10–12
-Processes, Security, Finalization.
+### Stages 11–12
+Security, Finalization.
 
 ---
 
@@ -256,7 +259,7 @@ Processes, Security, Finalization.
 - [x] **Stage 6.** Merkle service
 - [x] **Stage 7.** Prover
 - [x] **Stage 8.** Frontend
-- [ ] **Stage 9.** Infrastructure (Makefile, Prometheus, Grafana, Rust circuits-sync script)
+- [x] **Stage 9.** Infrastructure (Makefile, Prometheus, Grafana, Rust sync-circuits)
 - [ ] **Stage 10.** Engineering processes (CI/CD, security, templates)
 - [ ] **Stage 11.** Security (threat model, invariants, tests)
 - [ ] **Stage 12.** Finalization
@@ -268,7 +271,7 @@ Processes, Security, Finalization.
   - Timeout for `sunspot prove`
   - Per-request temp dirs in prover
   - **`commitment_exists` / `is_nullifier_used` filter by `pool_address`**
-  - Remove `debug!` from indexer if desired (decide later)
+  - Remove `debug!` from indexer if desired
 
 ---
 
@@ -282,10 +285,9 @@ Processes, Security, Finalization.
 - **TREE_DEPTH hardcoded** in circuit.
 - **Deposit trust model** — not verified on-chain.
 - **Sunspot cloned manually.**
-- **Circuits copied manually.**
-- **Prover:** single-threaded, no timeout, race condition on files, no witness size limit.
+- **Prover:** single-threaded, no timeout, race condition on files.
 - **DB queries** don't filter by `pool_address`.
-- **`Indexer` debug logs** — currently verbose (decide in stage 12).
+- **`Indexer` debug logs** — verbose.
 
 ---
 
@@ -298,10 +300,19 @@ Processes, Security, Finalization.
 
 ## 11. Commands
 
+### Makefile (from project root)
+```bash
+make start
+make stop
+make status
+make attach <backend|prover|merkle|frontend>
+make logs <backend|prover|merkle|frontend>
+make sync-circuits
+```
+
 ### Docker
 ```bash
 cd infra
-docker compose build solana
 docker compose up -d
 docker compose exec solana bash
 ```
@@ -317,8 +328,6 @@ cargo test
 ```bash
 cd /home/ubuntu/circuits/<name>
 nargo test
-nargo test test_generate_valid_inputs --show-output
-nargo execute
 ```
 
 ### Sunspot
@@ -328,23 +337,6 @@ cd /home/ubuntu/circuits/withdrawal
 sunspot compile target/withdrawal.json
 sunspot setup target/withdrawal.ccs
 sunspot deploy target/withdrawal.vk
-sunspot prove <acir> <witness> <ccs> <pk>
-```
-
-### Backend
-```bash
-cd /home/ubuntu/services/backend && cargo run
-```
-
-### Merkle
-```bash
-cd /home/ubuntu/services/merkle && pnpm install && pnpm test
-MERKLE_PORT=4003 node src/server.js
-```
-
-### Prover
-```bash
-cd /home/ubuntu/services/prover && PROVER_PORT=4002 cargo run
 ```
 
 ### Frontend
@@ -356,16 +348,9 @@ pnpm dev
 pnpm test:e2e --project=chromium
 ```
 
-### Migrations (from host)
-```bash
-docker exec -i zkpool-postgres psql -U zkpool -d zkpool < \
-  ~/Projects/Solana/solana-zk-pool/services/backend/migrations/001_init.sql
-```
-
 ### Reset DB + Redis tree
 ```bash
 docker exec zkpool-postgres psql -U zkpool -d zkpool -c "TRUNCATE commitments, roots, nullifiers RESTART IDENTITY;"
-docker exec zkpool-redis redis-cli KEYS "tree:<POOL_ADDRESS>:*" | xargs -r docker exec -i zkpool-redis redis-cli DEL
 docker exec zkpool-redis redis-cli DEL "indexer:<POOL_ADDRESS>:last_signature"
 ```
 
@@ -373,6 +358,6 @@ docker exec zkpool-redis redis-cli DEL "indexer:<POOL_ADDRESS>:last_signature"
 
 ## 12. Next task for a new assistant
 
-**Stage 9:** Infrastructure. Makefile (start/stop/status/attach/logs), Prometheus + Grafana (dashboards, provisioning), Rust CLI utility for circuits sync (compile + copy JSON to `services/merkle/circuits/` and `web/public/circuits/`).
+**Stage 10:** Engineering processes. GitHub Actions (`ci.yml`, `docker.yml`, `release.yml`, `security.yml`), issue/PR templates, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `dependabot.yml`.
 
 All details — in `docs/notes/` (personal notes, not committed).
