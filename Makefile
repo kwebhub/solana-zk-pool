@@ -31,16 +31,16 @@ help:
 	@echo "  make logs <name>        Tail service log"
 	@echo ""
 	@echo "  Services: backend, merkle, prover, frontend"
-	@echo "  Docker:   postgres, redis, solana"
+	@echo "  Docker:   postgres, redis, solana, prometheus, grafana"
 
 start:
 	@$(MAKE) --no-print-directory _start
 
 _start:
-	@echo -e "$(BLUE)[INFO]$(NC) Starting Postgres + Redis + solana..."
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up -d postgres redis solana
+	@echo -e "$(BLUE)[INFO]$(NC) Starting Postgres + Redis + solana + Prometheus + Grafana..."
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up -d postgres redis solana prometheus grafana
 	@sleep 3
-	@echo -e "$(GREEN)[OK]$(NC) Postgres + Redis + solana started"
+	@echo -e "$(GREEN)[OK]$(NC) Docker services started"
 	@$(MAKE) --no-print-directory _start_merkle
 	@$(MAKE) --no-print-directory _start_prover
 	@$(MAKE) --no-print-directory _start_backend
@@ -146,7 +146,9 @@ status:
 	@for url in \
 		"http://localhost:4001/api/health|backend" \
 		"http://localhost:4003/health|merkle" \
-		"http://localhost:5173|frontend"; do \
+		"http://localhost:5173|frontend" \
+		"http://localhost:9090/-/healthy|prometheus" \
+		"http://localhost:3000/api/health|grafana"; do \
 		endpoint="$${url%|*}"; \
 		name="$${url#*|}"; \
 		code=$$(curl -s -o /dev/null -w "%{http_code}" "$$endpoint" 2>/dev/null || echo "000"); \
