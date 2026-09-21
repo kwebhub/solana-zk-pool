@@ -2,13 +2,13 @@
 
 > **Purpose:** this file is the single entry point for an AI assistant (Claude, ChatGPT, etc.) in a new chat. Load it first — the assistant will understand the project without copying code files.
 >
-> **Last updated:** 2026-09-21 (after stage 11)
+> **Last updated:** 2026-09-21 (after stage 12, parts 1 and 2)
 
 ---
 
 ## 1. What this project is
 
-**solana-zk-pool** — a private pool for SOL transfers on Solana using ZK proofs (Groth16 on BN254). A user deposits SOL into a shared vault, receives a deposit note (secrets), and can later withdraw SOL to any address without revealing the link between deposit and withdrawal.
+**solana-zk-pool** — a private pool for SOL transfers on Solana using ZK proofs (Groth16 on BN254). A user deposits SOL into a shared vault, receives a deposit note (three secrets), and can later withdraw SOL to any address without revealing the link between deposit and withdrawal.
 
 **Origin:** [Solana Foundation Bootcamp 2026 — "05-private-transfers"](https://github.com/solana-foundation/solana-bootcamp-2026/tree/main/05-private-transfers).
 
@@ -18,12 +18,17 @@
 **License:** MIT
 **Network:** Solana Devnet
 
+**Current Program ID:** `C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q`
+**Current Pool PDA:** `GXbvPQrChj5T4PhV17CzgVKX54tk6f6aRCwTmMbSQSun`
+**Verifier Program ID:** `AukfYGQqhv3ZkdB1G7cKF3djsE9FKMrAfLd34doSWQex`
+
+**⚠️ Note:** Program ID was changed from `CZjs...` to `C5Q4...` during `make reset` (old keypair was lost). Old program on devnet — orphan, cannot be upgraded.
+
 **Key improvements over v1:**
 - Clean monorepo structure.
 - Shared `poseidon` library.
 - Pinned versions for all tools.
 - `pnpm` instead of `yarn`.
-- Cleaner `.gitignore`.
 - `Prover.toml` gitignored.
 - **Front-running protection** via `recipient_binding`.
 - **`amount` in `WithdrawEvent`**.
@@ -37,6 +42,8 @@
 - **CI/CD**: 4 GitHub Actions workflows.
 - **Threat model** with 7 invariants and 12 attack scenarios.
 - **18 integration tests** for the program.
+- **`.env.example`** in root.
+- **Sunspot git clone** in Dockerfile.
 
 ---
 
@@ -49,6 +56,7 @@
               ↓ HTTP                    ↑ HTTP
 ┌──────────────────────────────────────────────────────────────────┐
 │ BACKEND (Rust + axum) — port 4001                                │
+│ • /api/commitments  • /api/root  • /api/proof  • /api/withdraw   │
 └──────────────────────────────────────────────────────────────────┘
        ↓                    ↓                    ↓
 ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐
@@ -118,10 +126,11 @@
 solana-zk-pool/
 ├── .github/
 │   ├── workflows/{ci,docker,release,security}.yml
-│   ├── ISSUE_TEMPLATE/
+│   ├── ISSUE_TEMPLATE/{bug_report,config,feature_request}
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── dependabot.yml
 ├── Makefile
+├── .env.example             ← template for env
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -130,15 +139,15 @@ solana-zk-pool/
 │   ├── notes/               ← personal notes (NOT committed)
 │   ├── PROJECT_CONTEXT.md   ← this file
 │   ├── threat-model.md
-│   └── ru/                  ← Russian localization (later)
+│   └── ru/README.md
 ├── infra/
 │   ├── docker-compose.yml
 │   ├── prometheus.yml
 │   ├── grafana/provisioning/
 │   └── docker/Dockerfile.solana
 ├── scripts/sync-circuits/
-├── onchain/programs/zk_pool/
-├── circuits/{poseidon,hash2,hashes,withdrawal}/
+├── onchain/
+├── circuits/
 ├── services/{backend,merkle,prover}/
 ├── web/
 ├── solana/
@@ -156,93 +165,117 @@ solana-zk-pool/
 `recipient_binding = hash_2(note_secret, recipient)`. 5 public inputs.
 
 ### 5.2. Monorepo structure
+Flat: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`.
 
-### 5.3. Docker container `solana` — all-in-one, `network_mode: host`
+### 5.3. Docker container `solana` — all-in-one
+`network_mode: host`. Volumes: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`, `solana/`.
 
 ### 5.4. Shared `poseidon` library
 
-### 5.5. `hash_4` is NOT used
+### 5.5. `hash_4` is NOT used (sponge capacity = 0)
 
-### 5.6. Deposit splitting into unequal parts (planned, stage 12)
+### 5.6. Deposit splitting into unequal parts (planned, not implemented)
 
-### 5.7. Deposit trust model — deferred to stage 12
+### 5.7. Deposit trust model — not verified on-chain (TODO)
 
-### 5.8. Circuits sync — Rust CLI
+### 5.8. Circuits sync — Rust CLI (`scripts/sync-circuits`)
 
-### 5.9. Prover bottleneck (planned, stage 12)
+### 5.9. Prover bottleneck — Redis Streams (planned)
 
-### 5.10. DB queries don't filter by `pool_address` (planned, stage 12)
+### 5.10. DB queries don't filter by `pool_address` (TODO)
 
 ### 5.11. Frontend: `@solana/kit`/`@codama/*` pinned exact
 
 ### 5.12. Makefile — single entry point
+- `make start` — all services + auto-migrations.
+- `make status` — tmux + HTTP + Docker.
+- `make reset` — full cleanup + rebuild.
+- `bash -ic` for services inside `solana`.
 
 ### 5.13. CI/CD
 
 ### 5.14. Dependabot
 
 ### 5.15. Threat model documented
-- 7 invariants (I1-I7).
-- 12 attack scenarios (A1-A12).
-- 18 integration tests.
+- 7 invariants (I1-I7), 12 attack scenarios (A1-A12), 18 tests.
+
+### 5.16. Keypair NOT in git — requires manual backup (TODO)
+
+### 5.17. New Program ID after reset
+Old keypair lost, new keypair generated. Old program on devnet — orphan.
 
 ---
 
 ## 6. What has been done
 
 ### ✅ Stage 1. Repository setup (2026-09-20)
-Commits: `b0ef53b`, `d43552a`.
 
 ### ✅ Stage 2. ZK circuits (2026-09-20)
-Commit: `2fff662`.
 
 ### ✅ Stage 3. Sunspot verifier (2026-09-20)
 
 ### ✅ Stage 4.1a. Front-running protection (2026-09-20)
-**VERIFIER_PROGRAM_ID:** `AukfYGQqhv3ZkdB1G7cKF3djsE9FKMrAfLd34doSWQex`.
-Commit: `f461a19`.
 
 ### ✅ Stage 4. Anchor program (2026-09-21)
-**Program ID:** `C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q`.
 
 ### ✅ Stage 5. Backend (2026-09-21)
-Commit: `b5c1ba2`.
 
 ### ✅ Stage 6. Merkle service (2026-09-21)
-Commit: `ed3b912`.
 
 ### ✅ Stage 7. Prover (2026-09-21)
-Commit: `bcdec13`.
 
 ### ✅ Stage 8. Frontend (2026-09-21)
-Commit: `3f3ae8d`.
 
 ### ✅ Stage 9. Infrastructure (2026-09-21)
-Commits: `7c2b469`, `18f794d`, `4d5c258`.
 
 ### ✅ Stage 10. Engineering processes (2026-09-21)
-Commit: `aa92b60`.
 
 ### ✅ Stage 11. Security (2026-09-21)
-- `docs/threat-model.md` — 7 invariants, 12 attack scenarios.
-- 18 integration tests.
-- Commit: `4d341e9`.
+
+### 🚧 Stage 12. Finalization (in progress)
+
+**Part 1 — done:**
+- `README.md` — full project overview.
+- `docs/ru/README.md` — Russian version.
+- `Dockerfile.solana` — add Sunspot `git clone`.
+- `Makefile` — `reset` target with full cleanup + rebuild.
+- `Makefile` — auto-apply migrations on `start`.
+
+**Part 2 — done:**
+- **New Program ID** after `make reset`: `C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q`.
+- **New Pool PDA:** `GXbvPQrChj5T4PhV17CzgVKX54tk6f6aRCwTmMbSQSun`.
+- All files updated with new Program ID.
+- `.env.example` created.
+- Regenerated Codama clients for new ID.
+
+**Remaining in Stage 12:**
+- Split deposit into multiple unequal parts.
+- On-chain commitment verification.
+- Redis Streams queue for prover.
+- Timeout for `sunspot prove`.
+- Per-request temp dirs in prover.
+- **`commitment_exists` / `is_nullifier_used` filter by `pool_address`.**
+- `docs/architecture.md`, `docs/zk-explained.md`, `docs/deployment.md`.
+- Final CHANGELOG release.
+- GitHub release `v0.1.0`.
 
 ---
 
 ## 7. What's next
 
-### Stage 12. Finalization (next)
-- README EN/RU.
-- Split deposit into multiple unequal parts.
+### Immediate next steps
+1. **Test end-to-end flow** with new Program ID:
+   - Initialize pool.
+   - Deposit.
+   - Withdraw.
+2. **Fix `make reset`**: add `anchor build` and re-run `pnpm codama` correctly.
+3. **Backup keypair** (documented, not in git).
+
+### Remaining Stage 12 tasks
+- Split deposit into unequal parts.
 - On-chain commitment verification.
-- Sunspot `git clone` in Dockerfile.
-- Redis Streams queue for prover.
-- Timeout for `sunspot prove`.
-- Per-request temp dirs in prover.
-- **`commitment_exists` / `is_nullifier_used` filter by `pool_address`.**
-- CHANGELOG release.
-- Final documentation.
+- Redis Streams queue.
+- Documentation.
 
 ---
 
@@ -259,7 +292,21 @@ Commit: `aa92b60`.
 - [x] Stage 9. Infrastructure
 - [x] Stage 10. Engineering processes
 - [x] Stage 11. Security
-- [ ] Stage 12. Finalization
+- [🚧] Stage 12. Finalization
+  - [x] README EN/RU
+  - [x] Sunspot `git clone` in Dockerfile
+  - [x] `make reset`
+  - [x] `.env.example`
+  - [x] New Program ID
+  - [ ] Split deposit into multiple unequal parts
+  - [ ] On-chain commitment verification
+  - [ ] Redis Streams queue for prover
+  - [ ] Timeout for `sunspot prove`
+  - [ ] Per-request temp dirs in prover
+  - [ ] `commitment_exists` / `is_nullifier_used` filter by `pool_address`
+  - [ ] `docs/architecture.md`, `docs/zk-explained.md`, `docs/deployment.md`
+  - [ ] Final CHANGELOG release
+  - [ ] GitHub release `v0.1.0`
 
 ---
 
@@ -272,11 +319,12 @@ Commit: `aa92b60`.
 - **MerkleTree depth 20.**
 - **TREE_DEPTH hardcoded.**
 - **Deposit trust model** — not verified on-chain.
-- **Sunspot cloned manually.**
+- **Sunspot cloned in Dockerfile** — now persistent.
 - **Prover:** single-threaded, no timeout, race condition.
 - **DB queries** don't filter by `pool_address`.
 - **Indexer debug logs** — verbose.
-- **Docker workflows** — only backend/merkle/prover.
+- **Keypair NOT in git** — needs backup.
+- **`make reset`** — incomplete (needs `anchor build` + `pnpm codama`).
 
 ---
 
@@ -291,7 +339,9 @@ Commit: `aa92b60`.
 
 ### Makefile
 ```bash
-make start / stop / status / attach <name> / logs <name> / sync-circuits
+make start / stop / status / attach <name> / logs <name>
+make sync-circuits
+make reset
 ```
 
 ### Docker
@@ -300,38 +350,37 @@ cd infra && docker compose up -d
 docker compose exec solana bash
 ```
 
-### Tests
+### Anchor
 ```bash
-# Anchor
+docker compose -f infra/docker-compose.yml exec solana bash -ic \
+  "cd /home/ubuntu/onchain && anchor build"
+docker compose -f infra/docker-compose.yml exec solana bash -ic \
+  "cd /home/ubuntu/onchain && anchor deploy --provider.cluster devnet"
 docker compose -f infra/docker-compose.yml exec solana bash -ic \
   "cd /home/ubuntu/onchain && cargo test"
+```
 
-# Noir
+### Find Pool PDA
+```bash
 docker compose -f infra/docker-compose.yml exec solana bash -ic \
-  "cd /home/ubuntu/circuits/withdrawal && nargo test"
+  "solana find-program-derived-address C5Q4FjJ8zSD41FfMfcEccjnGnFJ7K44rDgnyrTx2fr6q string:pool3"
+```
 
-# Merkle
-docker compose -f infra/docker-compose.yml exec solana bash -ic \
-  "cd /home/ubuntu/services/merkle && pnpm test"
-
-# Frontend
-docker compose -f infra/docker-compose.yml exec solana bash -ic \
-  "cd /home/ubuntu/web && pnpm test:e2e --project=chromium"
+### Reset everything
+```bash
+make reset
 ```
 
 ---
 
 ## 12. Next task for a new assistant
 
-**Stage 12:** Finalization. Multiple improvements:
-1. README EN/RU.
-2. Split deposit into unequal parts (program + frontend + note).
-3. On-chain commitment verification.
-4. Sunspot `git clone` in Dockerfile.
-5. Redis Streams for prover.
-6. Timeout and per-request dirs in prover.
-7. DB queries filter by `pool_address`.
-8. CHANGELOG release.
-9. Final documentation.
+**Finish Stage 12:**
+1. Test end-to-end flow with new Program ID (`C5Q4...`): initialize pool → deposit → withdraw.
+2. Fix `make reset`: add `anchor build` (for IDL) and `pnpm codama` (after IDL).
+3. Split deposit into multiple unequal parts.
+4. On-chain commitment verification.
+5. Documentation: `docs/architecture.md`, `docs/zk-explained.md`, `docs/deployment.md`.
+6. Final CHANGELOG release + GitHub release `v0.1.0`.
 
 All details — in `docs/notes/` (personal notes, not committed).
