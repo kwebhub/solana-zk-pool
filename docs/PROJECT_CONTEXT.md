@@ -2,7 +2,7 @@
 
 > **Purpose:** this file is the single entry point for an AI assistant (Claude, ChatGPT, etc.) in a new chat. Load it first — the assistant will understand the project without copying code files.
 >
-> **Last updated:** 2026-09-21 (after stage 9)
+> **Last updated:** 2026-09-21 (after stage 10)
 
 ---
 
@@ -19,7 +19,7 @@
 **Network:** Solana Devnet
 
 **Key improvements over v1:**
-- Clean monorepo structure.
+- Clean monorepo structure (`onchain/`, `circuits/`, `services/`, `web/`, `scripts/`).
 - Shared `poseidon` library.
 - Pinned versions for all tools.
 - `pnpm` instead of `yarn`.
@@ -34,6 +34,7 @@
 - **Makefile** for full service orchestration.
 - **Prometheus + Grafana** provisioning.
 - **Rust CLI** for circuits sync.
+- **CI/CD**: 4 GitHub Actions workflows, Dependabot, templates.
 
 ---
 
@@ -106,6 +107,8 @@
 | Container | Docker | latest |
 | Node.js | Node.js | 24.21.0 |
 | pnpm | pnpm | 12.5.1 |
+| CI/CD | GitHub Actions | 4 workflows |
+| Deps | Dependabot | 8 configs |
 
 ---
 
@@ -113,7 +116,23 @@
 
 ```
 solana-zk-pool/
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml
+│   │   ├── docker.yml
+│   │   ├── release.yml
+│   │   └── security.yml
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.md
+│   │   ├── config.yml
+│   │   └── feature_request.md
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── dependabot.yml
 ├── Makefile                 ← service management
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── deny.toml
 ├── docs/
 │   ├── notes/               ← personal notes (NOT committed)
 │   ├── PROJECT_CONTEXT.md   ← this file
@@ -122,22 +141,10 @@ solana-zk-pool/
 │   ├── docker-compose.yml
 │   ├── prometheus.yml
 │   ├── grafana/provisioning/
-│   │   ├── dashboards/
-│   │   │   ├── dashboards.yml
-│   │   │   └── zkpool.json
-│   │   └── datasources/
-│   │       └── prometheus.yml
 │   └── docker/
-│       ├── Dockerfile.solana
-│       └── .dockerignore
-├── scripts/
-│   └── sync-circuits/       ← Rust CLI for circuits sync
-├── onchain/                 ← Anchor workspace
+├── scripts/sync-circuits/   ← Rust CLI
+├── onchain/
 ├── circuits/
-│   ├── poseidon/
-│   ├── hash2/
-│   ├── hashes/
-│   └── withdrawal/
 ├── services/
 │   ├── backend/
 │   ├── merkle/
@@ -163,35 +170,33 @@ Note bearer-style. Recipient bound via `recipient_binding = hash_2(note_secret, 
 Flat: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`.
 
 ### 5.3. Docker container `solana` — all-in-one
-Rust, Solana CLI, Anchor, Noir, Sunspot, Node.js, pnpm. `network_mode: host`.
-Volumes: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`, `solana/`.
+`network_mode: host`. Volumes: `onchain/`, `circuits/`, `services/`, `web/`, `scripts/`, `solana/`.
 
 ### 5.4. Shared `poseidon` library
-All hashes in `circuits/poseidon/`.
 
-### 5.5. `hash_4` is NOT used
-Poseidon2: `t = 4`, rate = 3.
+### 5.5. `hash_4` is NOT used (sponge capacity = 0)
 
 ### 5.6. Deposit splitting into unequal parts (planned, stage 12)
-k (1..10), unequal amounts.
 
 ### 5.7. Deposit trust model — deferred to stage 12
-Program does NOT verify `commitment` on-chain.
 
 ### 5.8. Circuits sync — Rust CLI
-`scripts/sync-circuits/` compiles + copies JSON to `services/merkle/circuits/` and `web/public/circuits/`.
 
-### 5.9. Prover bottleneck (planned, stage 12)
-Redis Streams queue planned.
+### 5.9. Prover bottleneck — Redis Streams (planned, stage 12)
 
 ### 5.10. DB queries don't filter by `pool_address` (planned, stage 12)
 
-### 5.11. Frontend: `@solana/kit`/`@codama/*` pinned to exact versions
+### 5.11. Frontend: `@solana/kit`/`@codama/*` pinned exact
 
 ### 5.12. Makefile — single entry point
-- `make start` — всё одной командой.
-- `make status` — tmux + HTTP + Docker.
-- `bash -ic` для сервисов внутри `solana`.
+
+### 5.13. CI/CD
+- `ci.yml` — 6 jobs + aggregator.
+- `docker.yml` — GHCR + semver.
+- `release.yml` — auto-changelog.
+- `security.yml` — cargo-deny (blocking), cargo-audit, pnpm audit, trivy, gitleaks.
+
+### 5.14. Dependabot — 8 configs, groups for minor+patch
 
 ---
 
@@ -212,7 +217,6 @@ Commit: `f461a19`.
 
 ### ✅ Stage 4. Anchor program (2026-09-21)
 **Program ID:** `CZjsHYcE6oPhj2ZAKVdnaz36FQHC7SBd7MSY1jmAaj3o`.
-7 tests. Commits: `5aebd2d`, `<test commit>`.
 
 ### ✅ Stage 5. Backend (2026-09-21)
 Commit: `b5c1ba2`.
@@ -227,25 +231,31 @@ Commit: `bcdec13`.
 Commit: `3f3ae8d`.
 
 ### ✅ Stage 9. Infrastructure (2026-09-21)
-- Makefile (`start`, `stop`, `status`, `attach`, `logs`, `sync-circuits`).
-- Prometheus (scrape backend).
-- Grafana (datasources + 9-panel dashboard).
-- Rust CLI `sync-circuits`.
-- Docker Compose: `prometheus`, `grafana`, `scripts` volume.
-- Commits: `7c2b469`, `18f794d`, `4d5c258`.
+Commits: `7c2b469`, `18f794d`, `4d5c258`.
+
+### ✅ Stage 10. Engineering processes (2026-09-21)
+- 4 GitHub Actions workflows.
+- Dependabot (8 configs).
+- Issue/PR templates.
+- `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `deny.toml`.
+- Commit: `aa92b60`.
 
 ---
 
 ## 7. What's next
 
-### Stage 10. Engineering processes (next)
-- GitHub Actions: `ci.yml`, `docker.yml`, `release.yml`, `security.yml`.
-- Issue/PR templates.
-- `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`.
-- `dependabot.yml`.
+### Stage 11. Security (next)
+- Threat model (docs/threat-model.md).
+- Invariants (I1-I7).
+- Attack scenarios (A1-A11).
+- Integration tests (litesvm).
 
-### Stages 11–12
-Security, Finalization.
+### Stage 12. Finalization
+- README EN/RU.
+- Split deposit into unequal parts.
+- On-chain commitment verification.
+- Sunspot git clone in Dockerfile.
+- Redis Streams queue for prover.
 
 ---
 
@@ -259,8 +269,8 @@ Security, Finalization.
 - [x] **Stage 6.** Merkle service
 - [x] **Stage 7.** Prover
 - [x] **Stage 8.** Frontend
-- [x] **Stage 9.** Infrastructure (Makefile, Prometheus, Grafana, Rust sync-circuits)
-- [ ] **Stage 10.** Engineering processes (CI/CD, security, templates)
+- [x] **Stage 9.** Infrastructure
+- [x] **Stage 10.** Engineering processes
 - [ ] **Stage 11.** Security (threat model, invariants, tests)
 - [ ] **Stage 12.** Finalization
   - README EN/RU, CHANGELOG, release
@@ -271,30 +281,30 @@ Security, Finalization.
   - Timeout for `sunspot prove`
   - Per-request temp dirs in prover
   - **`commitment_exists` / `is_nullifier_used` filter by `pool_address`**
-  - Remove `debug!` from indexer if desired
 
 ---
 
 ## 9. Known limitations / TODOs
 
-- **Trusted setup for Groth16** — no MPC.
+- **Trusted setup** — no MPC.
 - **Upgrade authority** — single key.
 - **Secrets in localStorage** — XSS risk.
 - **Backend sees commitments/nullifiers.**
 - **MerkleTree depth 20.**
-- **TREE_DEPTH hardcoded** in circuit.
+- **TREE_DEPTH hardcoded.**
 - **Deposit trust model** — not verified on-chain.
 - **Sunspot cloned manually.**
 - **Prover:** single-threaded, no timeout, race condition on files.
 - **DB queries** don't filter by `pool_address`.
-- **`Indexer` debug logs** — verbose.
+- **Indexer debug logs** — verbose.
+- **Docker workflows** — only backend/merkle/prover, not solana.
 
 ---
 
 ## 10. Git workflow
 
 - Conventional commits.
-- **All committed files in English.** Russian — only in `docs/ru/`.
+- **All committed files in English.**
 
 ---
 
@@ -317,28 +327,6 @@ docker compose up -d
 docker compose exec solana bash
 ```
 
-### Anchor
-```bash
-cd /home/ubuntu/onchain
-anchor build && anchor deploy --provider.cluster devnet
-cargo test
-```
-
-### Noir
-```bash
-cd /home/ubuntu/circuits/<name>
-nargo test
-```
-
-### Sunspot
-```bash
-git clone https://github.com/reilabs/sunspot.git /home/ubuntu/sunspot
-cd /home/ubuntu/circuits/withdrawal
-sunspot compile target/withdrawal.json
-sunspot setup target/withdrawal.ccs
-sunspot deploy target/withdrawal.vk
-```
-
 ### Frontend
 ```bash
 cd /home/ubuntu/web
@@ -348,16 +336,10 @@ pnpm dev
 pnpm test:e2e --project=chromium
 ```
 
-### Reset DB + Redis tree
-```bash
-docker exec zkpool-postgres psql -U zkpool -d zkpool -c "TRUNCATE commitments, roots, nullifiers RESTART IDENTITY;"
-docker exec zkpool-redis redis-cli DEL "indexer:<POOL_ADDRESS>:last_signature"
-```
-
 ---
 
 ## 12. Next task for a new assistant
 
-**Stage 10:** Engineering processes. GitHub Actions (`ci.yml`, `docker.yml`, `release.yml`, `security.yml`), issue/PR templates, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `dependabot.yml`.
+**Stage 11:** Security. Create `docs/threat-model.md` with assets, actors, invariants (I1-I7), attack scenarios (A1-A11), mitigations. Write integration tests (litesvm) for `withdraw` invariants: double-spend, invalid proof, invalid root, recipient mismatch.
 
 All details — in `docs/notes/` (personal notes, not committed).
