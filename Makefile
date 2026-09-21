@@ -128,7 +128,7 @@ stop:
 			echo -e "$(GREEN)[OK]$(NC) Stopped session $$session"; \
 		fi; \
 	done
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) stop postgres redis
+	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) stop postgres redis solana prometheus grafana
 	@echo -e "$(GREEN)[OK]$(NC) All stopped"
 
 status:

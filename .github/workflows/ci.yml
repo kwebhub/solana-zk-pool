@@ -1,0 +1,293 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  backend:
+    name: Backend (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: zkpool
+          POSTGRES_PASSWORD: zkpool_dev_password
+          POSTGRES_DB: zkpool
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            services/backend/target/
+          key: ${{ runner.os }}-cargo-backend-${{ hashFiles('services/backend/Cargo.lock') }}
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config postgresql-client
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo build
+        run: cargo build --release
+
+      - name: Apply DB migrations
+        run: |
+          PGPASSWORD=zkpool_dev_password psql -h localhost -U zkpool -d zkpool \
+            -f migrations/001_init.sql
+
+      - name: cargo test
+        run: cargo test --all-targets --verbose -- --test-threads=1
+        env:
+          TEST_DATABASE_URL: postgres://zkpool:zkpool_dev_password@localhost:5432/zkpool
+          DATABASE_URL: postgres://zkpool:zkpool_dev_password@localhost:5432/zkpool
+
+  prover:
+    name: Prover (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prover
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            services/prover/target/
+          key: ${{ runner.os }}-cargo-prover-${{ hashFiles('services/prover/Cargo.lock') }}
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo build
+        run: cargo build --release
+
+  program:
+    name: Anchor program
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: onchain
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            onchain/target/
+          key: ${{ runner.os }}-cargo-program-${{ hashFiles('onchain/Cargo.lock') }}
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Install Anchor CLI 1.1.2
+        run: |
+          curl -L https://github.com/coral-xyz/anchor/releases/download/v0.31.1/anchor-0.31.1-x86_64-unknown-linux-gnu \
+            -o /tmp/anchor
+          chmod +x /tmp/anchor
+          sudo mv /tmp/anchor /usr/local/bin/anchor
+          anchor --version
+
+      - name: anchor build
+        run: anchor build
+
+      - name: cargo test (program)
+        working-directory: onchain/programs/zk_pool
+        run: cargo test --all-targets
+
+  noir:
+    name: Noir circuits
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Noir (noirup + nargo)
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
+          echo "$HOME/.nargo/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.nargo/bin:$PATH"
+          "$HOME/.nargo/bin/noirup" -v 1.0.0-rc.2
+
+      - name: Verify nargo installation
+        run: |
+          ls -la $HOME/.nargo/bin/ || true
+          $HOME/.nargo/bin/nargo --version
+
+      - name: nargo test (withdrawal)
+        working-directory: circuits/withdrawal
+        run: $HOME/.nargo/bin/nargo test
+
+      - name: nargo test (hash2)
+        working-directory: circuits/hash2
+        run: $HOME/.nargo/bin/nargo test
+
+      - name: nargo test (hashes)
+        working-directory: circuits/hashes
+        run: $HOME/.nargo/bin/nargo test
+
+  merkle:
+    name: Merkle (Node.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: services/merkle/pnpm-lock.yaml
+
+      - name: pnpm install
+        working-directory: services/merkle
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify circuits are present
+        working-directory: services/merkle
+        run: |
+          test -f circuits/hash2.json || (echo "circuits/hash2.json missing" && exit 1)
+          test -f circuits/withdrawal.json || (echo "circuits/withdrawal.json missing" && exit 1)
+
+      - name: Syntax check
+        working-directory: services/merkle
+        run: node --check src/server.js
+
+      - name: npm test
+        working-directory: services/merkle
+        run: pnpm test
+
+  frontend:
+    name: Frontend (Vue)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: pnpm install
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify generated clients
+        working-directory: web
+        run: |
+          test -f src/generated/pdas/index.ts || (echo "generated clients missing" && exit 1)
+
+      - name: Type-check + build
+        working-directory: web
+        run: pnpm run build
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run e2e tests
+        working-directory: web
+        run: npx playwright test --project=chromium --reporter=list
+
+  ci-success:
+    name: CI success
+    needs: [backend, prover, program, noir, merkle, frontend]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.backend.result }}" != "success" ] || \
+             [ "${{ needs.prover.result }}" != "success" ] || \
+             [ "${{ needs.program.result }}" != "success" ] || \
+             [ "${{ needs.noir.result }}" != "success" ] || \
+             [ "${{ needs.merkle.result }}" != "success" ] || \
+             [ "${{ needs.frontend.result }}" != "success" ]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All jobs passed ✅"
