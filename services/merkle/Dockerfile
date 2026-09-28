@@ -3,7 +3,7 @@
 # ============================================================
 
 # ---------- Stage 1: builder ----------
-FROM node:24-slim AS builder
+FROM node:26-slim AS builder
 
 WORKDIR /build
 
@@ -13,7 +13,7 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
 # ---------- Stage 2: runtime ----------
-FROM node:24-slim
+FROM node:26-slim
 
 WORKDIR /app
 
